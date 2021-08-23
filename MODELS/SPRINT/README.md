@@ -6,7 +6,7 @@ ___
 ## Usage:  
 
 e.g.  
-> **python sprint.py -s sequences.fasta -h HSP/file.hsp -f data.tsv -k5**  
+> **python sprint.py -p protein_sequences.fasta -h HSP/file.hsp -f interaction_data.tsv -k5**  
 
 Description:  
 
