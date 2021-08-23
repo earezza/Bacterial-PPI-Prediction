@@ -99,6 +99,7 @@ This will also generate new directories for the chosen models/formats and format
 
 ./get_profiles.sh directory_with_sequences/ database_name  
   
+*Note: This will add the PSSM files to the same directory as the .fasta files. For use in DPPI, the directory should only contain PSSM files with filenames of the protein IDs and no extension.  
 ___  
 #### References:  
 
