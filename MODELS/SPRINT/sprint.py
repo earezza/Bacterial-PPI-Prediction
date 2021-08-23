@@ -44,7 +44,7 @@ from sklearn import metrics
 import matplotlib.pyplot as plt
 
 
-describe_help = 'python sprint.py -f data.tsv -h HSP/file.hsp -k5'
+describe_help = 'python sprint.py -p protein_sequences.fasta -f data.tsv -h HSP/file.hsp -k5'
 parser = argparse.ArgumentParser(description=describe_help)
 # All original arguements used in SPRINT, can also just perform these directly
 parser.add_argument('-cs', '--compile_serial', help='Flag for compiling SPRINT (serial) if not already done', action='store_true')
