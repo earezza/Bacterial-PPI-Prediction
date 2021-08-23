@@ -97,7 +97,7 @@ This will also generate new directories for the chosen models/formats and format
   
 #### To get PSSM profiles for DPPI, download BLAST and a BLAST database then run:  
 
-./get_profiles.sh directory_with_sequences/ database  
+./get_profiles.sh directory_with_sequences/ database_name  
   
 ___  
 #### References:  
