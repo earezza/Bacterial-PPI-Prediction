@@ -95,8 +95,12 @@ This will also generate new directories for the chosen models/formats and format
 *Currently only supports formatting for [PIPR](https://github.com/muhaochen/seq_ppi), [DeepFE-PPI](https://github.com/xal2019/DeepFE-PPI), [DPPI](https://github.com/hashemifar/DPPI), and [SPRINT](https://github.com/lucian-ilie/SPRINT) protein prediction models.*  
 *Note: DPPI will still require a PSI-BLAST search for PSSMs using the protein files created and the get_profiles.sh script.*  
   
+#### To get PSSM profiles for DPPI, download BLAST and a BLAST database then run:  
+
+./get_profiles.sh directory_with_sequences/ database  
+  
 ___  
-#### References  
+#### References:  
 
 Obtaining protein sequence's PSSM profile data for DPPI can be derived using [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download)  
 - Altschul S, Gish W, Miller W, Myers E, Lipman D: Basic local alignment search tool. J Mol Biol 1990, 215(3):403–410.  
