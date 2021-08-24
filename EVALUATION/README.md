@@ -1,3 +1,14 @@
+Environment used:
+
+    python 3.7  
+    scikit-learn  
+    pandas 0.24.2  
+    numpy 1.16.4  
+    urllib3 1.26.4  
+    matplotlib 3.1.0  
+    kneed 0.7.0  
+___
+
 ### Description:  
 
     Evaluates the performance of PPI predictions by plotting ROC and Precision-Recall curves.
