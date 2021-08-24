@@ -3,6 +3,17 @@
 After downloading and unzipping a [BioGRID release](https://downloads.thebiogrid.org/BioGRID/Release-Archive/) file, run the following for example:  
 
 python preprocess_biogrid.py biogrid_filename.txt -t intra -c2 -f -s0.6 -m pipr sprint deepfe dppi -k5  
+  
+Environment used:
+
+    python 3.7  
+    scikit-learn  
+    pandas 0.24.2  
+    numpy 1.16.4  
+    urllib3 1.26.4  
+    matplotlib 3.1.0  
+    kneed 0.7.0  
+___
 
     Description:
     
