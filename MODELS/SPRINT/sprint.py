@@ -44,7 +44,7 @@ from sklearn import metrics
 import matplotlib.pyplot as plt
 
 
-describe_help = 'python sprint.py -p protein_sequences.fasta -f data.tsv -h HSP/file.hsp -k5'
+describe_help = 'python sprint.py -s sequences.fasta -f data.tsv -h HSP/file.hsp -k5'
 parser = argparse.ArgumentParser(description=describe_help)
 # All original arguements used in SPRINT, can also just perform these directly
 parser.add_argument('-cs', '--compile_serial', help='Flag for compiling SPRINT (serial) if not already done', action='store_true')
@@ -240,12 +240,29 @@ if __name__ == '__main__':
                              train_pos=RESULTS_DIR + output + '_pos_train_fold-' + str(fold) + '.txt', 
                              pos=RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt', 
                              neg=RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt', 
-                             output_name=RESULTS_DIR + output + '_fold-%s.txt'%str(fold), 
+                             output_name=RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), 
                              entire_proteome=args.entire_proteome)
             
             # Read predictions for k-fold
-            df_pred = pd.read_csv(RESULTS_DIR + output + '_fold-%s.txt'%str(fold), delim_whitespace=True, header=None)
+            df_pred = pd.read_csv(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), delim_whitespace=True, header=None)
             df_pred_all = df_pred_all.append(df_pred)
+            
+            # Format results
+            tested = pos_test.append(neg_test, ignore_index=True)
+            tested.to_csv(RESULTS_DIR + output + '_test_fold-' + str(fold) + '.tsv', sep='\t', header=None, index=False)
+            os.remove(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt')
+            os.remove(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt')
+            
+            ppi = test.copy()
+            ppi.reset_index(drop=True, inplace=True)
+            scores = df_pred.copy()
+            scores.reset_index(drop=True, inplace=True)
+            ppi.insert(2, 'Score', scores[0])
+            ppi.to_csv(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), sep=' ', columns=ppi.columns[:3], header=None, index=False)
+            # Remove redundant files from sprint
+            os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.pos'%str(fold))
+            os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.neg'%str(fold))
+            
             
             # Evaluate k-fold performance and adjust for hypothetical imbalance
             precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
