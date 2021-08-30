@@ -124,10 +124,10 @@ parser.add_argument('-c', '--confidence_level',
                     help='Confidence level of interactions, 0: include all interactions\n 1: only interactions listed more than once\n2 (default): only interactions with multiple different sources',
                     choices=(0, 1, 2), type=int, default=2)
 parser.add_argument('-f', '--filter', help='Flag to apply conservative filters (desirable)', action='store_true')
-parser.add_argument('-h', '--host_id', help='Organism ID of host',
-                    type=float)
-parser.add_argument('-p', '--pathogen_id', help='Organism IDs of pathogens (can be list)',
-                    type=float, nargs='+')
+parser.add_argument('-host', '--host_id', help='Organism ID of host',
+                    type=int)
+parser.add_argument('-pathogen', '--pathogen_id', help='Organism IDs of pathogens (can be list)',
+                    type=int, nargs='+')
 parser.add_argument('-u', '--unreviewed', help='Flag to include unreviewed UniProt entries (default false)', action='store_true')
 parser.add_argument('-s', '--sequence_identity', help='Sequence identity threshold for removing homologous proteins (0.4 minimum, 1.0 is no removal) default 0.6',
                     type=float, default=0.6)
@@ -353,7 +353,7 @@ def get_hpidb_interactions(df_file, positome_filter=True):
     
     return df
 
-def separate_species_interactions(df_hpidb, host_id, pathogen_ids, confidence=2):
+def separate_species_interactions(df_hpidb, host_id=None, pathogen_ids=None, confidence=2):
     df = df_hpidb.copy()
     ppi_type = 'inter'
     if host_id == None:
@@ -361,7 +361,7 @@ def separate_species_interactions(df_hpidb, host_id, pathogen_ids, confidence=2)
         # Get main organism ID as most frequent in df for intra-species PPIs
         main_organism = organism_count.loc[organism_count == organism_count.max()].index[0]
     else:
-        main_organism = host_id[0]
+        main_organism = host_id
     if pathogen_ids == None:
         # Get all other organism IDs for inter-species PPIs with main organism
         inter_organisms = organism_count.index.tolist()
@@ -398,8 +398,11 @@ def check_ppi_confidence(df_hpidb, level=2):
     # Get PPIs resetting order such that protein interactions AB and BA are all listed as AB
     ppi = pd.DataFrame([set(p) for p in df[[COLS[0], COLS[1]]].values])
     # Fill in for self-interacting proteins
-    ppi[ppi.columns[1]] = ppi[ppi.columns[1]].fillna(ppi[ppi.columns[0]])
-        
+    if ppi.empty == False:
+        ppi[ppi.columns[1]] = ppi[ppi.columns[1]].fillna(ppi[ppi.columns[0]])
+    else:
+        return pd.DataFrame()
+    
     # Level 0: all unique PPIs
     if level == 0:
         ppi.drop_duplicates(inplace=True)
@@ -957,8 +960,9 @@ if __name__ == "__main__":
     print('\t%s PPIs'%df_pos.shape[0])
     
     print('\nOrganizing species-specific interactions...')
-    df_intra, df_inter = separate_species_interactions(df_pos, ppi_type='inter', confidence=args.confidence_level)
+    df_intra, df_inter = separate_species_interactions(df_pos, host_id=args.host_id, pathogen_ids=args.pathogen_id, confidence=args.confidence_level)
     
+    '''
     # Get intra-species PPIs
     if args.type == 'both' or args.type == 'intra':
         print('\n===== Working on intra-species interactions... =====')
@@ -999,9 +1003,9 @@ if __name__ == "__main__":
             except Exception as e:
                 print(e)
                 exit()
-        
+    '''
     # Get inter-species PPIs
-    if (args.type == 'both' or args.type == 'inter') and df_inter != None:
+    if df_inter != None:
         print('\n===== Working on inter-species interactions... =====')
         for df in range(0, len(df_inter)):
             time.sleep(1)
