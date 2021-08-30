@@ -89,6 +89,22 @@ ___
                     0 or 1: does not create k-fold subsets
                 -a <flag> generates all-to-all PPIs, positively labelled, for proteins in the final dataset (BE MINDFUL OF HARDDRIVE/STORAGE)
                
+# HPIDB Dataset Preprocessing
+
+After downloading and unzipping a [HPIDB](https://hpidb.igbb.msstate.edu/index.html) file, run the following for example:  
+
+python preprocess_hpidb.py hpidb_filename.txt -h 9606 -p 559292 83333 -c2 -f -s0.6 -m pipr sprint deepfe dppi -k5  
+
+Script is similar to above with additional options for host-pathogen interactions:  
+
+    -h <int> host interactor organism ID  
+      If None, all host-pathogen interactions extracted  
+    -p <int> pathogen interactor organism ID (can be a list of IDs)  
+      If None, all host-pathogen interactions extracted  
+*Note: detection methods are not currently filtered for HPIDB.*  
+  
+___  
+  
 #### General output file format  
 Sequence data as .fasta files, example:  
 >\>ProteinID_1  
@@ -126,3 +142,9 @@ Sequence similarity is filtered using [CDHIT](http://weizhong-lab.ucsd.edu/cd-hi
 - Weizhong Li & Adam Godzik. Cd-hit: a fast program for clustering and comparing large sets of protein or nucleotide sequences. Bioinformatics (2006) 22:1658-1659  
 - Limin Fu, Beifang Niu, Zhengwei Zhu, Sitao Wu and Weizhong Li, CD-HIT: accelerated for clustering the next generation sequencing data. Bioinformatics, (2012), 28 (23): 3150-3152. doi: 10.1093/bioinformatics/bts565  
   
+BioGRID Database [BioGRID](https://thebiogrid.org/)  
+- Rose Oughtred, Chris Stark, Bobby-Joe Breitkreutz, Jennifer Rust, Lorrie Boucher, Christie Chang, Nadine Kolas, Lara O’Donnell, Genie Leung, Rochelle McAdam, Frederick Zhang, Sonam Dolma, Andrew Willems, Jasmin Coulombe-Huntington, Andrew Chatr-aryamontri, Kara Dolinski, Mike Tyers, The BioGRID interaction database: 2019 update, Nucleic Acids Research, Volume 47, Issue D1, 08 January 2019, Pages D529–D541, https://doi.org/10.1093/nar/gky1079  
+  
+Host-Pathogen Interaction Database [HPIDB3.0](https://hpidb.igbb.msstate.edu/index.html)  
+- Ammari, M.G., Gresham, C.R., McCarthy, F.M. and Nanduri, B., 2016. HPIDB 2.0: a curated database for host–pathogen interactions. Database, 2016. [DOI](https://doi.org/10.1093/database/baw103)  
+- Kumar, R. and Nanduri, B., 2010. HPIDB-a unified resource for host-pathogen interactions BMC bioinformatics, 11(6), p.S16. [DOI](https://doi.org/10.1186/1471-2105-11-S6-S16)  
