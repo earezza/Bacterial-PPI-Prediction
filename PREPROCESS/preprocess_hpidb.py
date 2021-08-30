@@ -347,6 +347,14 @@ def get_hpidb_interactions(df_file, positome_filter=True):
     df = df[df[ORGANISM_ID_B] != '-']
     df = df[df[PUBMED] != '-']
     df.dropna(subset=[COLS[0], COLS[1], PUBMED], inplace=True)
+    
+    df[ORGANISM_ID_A] = df[ORGANISM_ID_A].str.replace('taxid:', '')
+    df[ORGANISM_ID_B] = df[ORGANISM_ID_B].str.replace('taxid:', '')
+    taxidsa = [i.split('(')[0] for i in df[ORGANISM_ID_A]]
+    taxidsb = [i.split('(')[0] for i in df[ORGANISM_ID_B]]
+    df[ORGANISM_ID_A] = taxidsa
+    df[ORGANISM_ID_B] = taxidsb
+    
     df[ORGANISM_ID_A] = df[ORGANISM_ID_A].astype(int)
     df[ORGANISM_ID_B] = df[ORGANISM_ID_B].astype(int)
     df.reset_index(drop=True, inplace=True)
