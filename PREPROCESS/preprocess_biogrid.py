@@ -276,8 +276,11 @@ def check_ppi_confidence(df_biogrid, level=2):
     # Get PPIs resetting order such that protein interactions AB and BA are all listed as AB
     ppi = pd.DataFrame([set(p) for p in df[['Entrez Gene Interactor A', 'Entrez Gene Interactor B']].values])
     # Fill in for self-interacting proteins
-    ppi[ppi.columns[1]] = ppi[ppi.columns[1]].fillna(ppi[ppi.columns[0]]).astype(int)
-        
+    if ppi.empty == False:
+        ppi[ppi.columns[1]] = ppi[ppi.columns[1]].fillna(ppi[ppi.columns[0]]).astype(int)
+    else:
+        return pd.DataFrame()
+    
     # Level 0: all unique PPIs
     if level == 0:
         ppi.drop_duplicates(inplace=True)
