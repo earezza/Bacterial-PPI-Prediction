@@ -872,11 +872,18 @@ if __name__ == "__main__":
                     if df_intra_neg.shape[0] == 0:
                         print('\tNo negatives generated...')
                     else:
+                        # Remove sequences not in interactions
+                        seq = df_intra_fasta_final.copy()
+                        seq[seq.columns[0]] = seq[seq.columns[0]].str.replace('>', '')
+                        proteins = df_intra_pos[df_intra_pos.columns[0]].append(df_intra_pos[df_intra_pos.columns[1]]).unique()
+                        seq = seq[seq[seq.columns[0]].isin(proteins)]
+                        seq[seq.columns[0]] = '>' + seq[seq.columns[0]]
+                        seq.reset_index(drop=True, inplace=True)
                         print('\nSaving PPI dataset...%s'%filename)
                         df_intra_pos = df_intra_pos[df_intra_pos.columns[:2]]
                         df_intra_pos.columns = df_intra_neg.columns
                         df_intra_neg = df_intra_neg[df_intra_neg.columns[:2]]
-                        save_ppi_data(filename, df_intra_pos, df_intra_neg, df_intra_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
+                        save_ppi_data(filename, df_intra_pos, df_intra_neg, seq, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
             except Exception as e:
                 print(e)
                 exit()
@@ -919,11 +926,18 @@ if __name__ == "__main__":
                 if df_inter_neg.shape[0] == 0:
                         print('\tNo negatives generated...')
                 else:
+                    # Remove sequences not in interactions
+                    seq = df_inter_fasta_final.copy()
+                    seq[seq.columns[0]] = seq[seq.columns[0]].str.replace('>', '')
+                    proteins = df_inter_pos[df_inter_pos.columns[0]].append(df_inter_pos[df_inter_pos.columns[1]]).unique()
+                    seq = seq[seq[seq.columns[0]].isin(proteins)]
+                    seq[seq.columns[0]] = '>' + seq[seq.columns[0]]
+                    seq.reset_index(drop=True, inplace=True)
                     print('\nSaving PPI dataset...%s'%filename)
                     df_inter_pos = df_inter_pos[df_inter_pos.columns[:2]]
                     df_inter_pos.columns = df_inter_neg.columns
                     df_inter_neg = df_inter_neg[df_inter_neg.columns[:2]]
-                    save_ppi_data(filename, df_inter_pos, df_inter_neg, df_inter_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
+                    save_ppi_data(filename, df_inter_pos, df_inter_neg, seq, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
             except Exception as e:
                 print('**********\n', e, '\n')
                 os.remove(SAVE_LOCATION + filename + '_interactions.tsv')
