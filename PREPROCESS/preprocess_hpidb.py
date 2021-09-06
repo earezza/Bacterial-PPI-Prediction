@@ -1050,6 +1050,13 @@ if __name__ == "__main__":
                 if df_inter_neg.shape[0] == 0:
                         print('\tNo negatives generated...')
                 else:
+                    # Remove sequences not in interactions
+                    seq = df_inter_fasta_final.copy()
+                    seq[seq.columns[0]] = seq[seq.columns[0]].str.replace('>', '')
+                    proteins = df_inter_pos[df_inter_pos.columns[0]].append(df_inter_pos[df_inter_pos.columns[1]]).unique()
+                    seq = seq[seq[seq.columns[0]].isin(proteins)]
+                    seq[seq.columns[0]] = '>' + seq[seq.columns[0]]
+                    seq.reset_index(drop=True, inplace=True)
                     print('\nSaving PPI dataset...%s'%filename)
                     df_inter_pos = df_inter_pos[df_inter_pos.columns[:2]]
                     df_inter_pos.columns = df_inter_neg.columns
