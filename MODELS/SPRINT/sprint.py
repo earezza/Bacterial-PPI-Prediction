@@ -174,7 +174,6 @@ def predict_interactions(sprint_location, protein_sequences, hsp_filename, thc=4
         result = subprocess.run(cmd.split(), capture_output=True, text=True)
         print(result.stdout)
         print(result.stderr)
-        print('DONE!')
     except Exception as e:
         print(e)
     
@@ -231,9 +230,9 @@ if __name__ == '__main__':
             neg_train, neg_test = train[train[train.columns[-1]] == 0], test[test[test.columns[-1]] == 0]
             
             # Save subsets for SPRINT to read from...for predicting interactions
-            pos_train.to_csv(RESULTS_DIR + output + '_pos_train_fold-' + str(fold) + '.txt', sep=' ', header=None, index=False)
-            pos_test.to_csv(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt', sep=' ', header=None, index=False)
-            neg_test.to_csv(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt', sep=' ', header=None, index=False)
+            pos_train.to_csv(RESULTS_DIR + output + '_pos_train_fold-' + str(fold) + '.txt', sep=' ', columns=[0,1], header=None, index=False)
+            pos_test.to_csv(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt', sep=' ', columns=[0,1], header=None, index=False)
+            neg_test.to_csv(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt', sep=' ', columns=[0,1], header=None, index=False)
             
             # Run predict interactions for k-fold
             predict_interactions(args.sprint, args.protein_sequences, args.hsp_file, thc=args.hc_threshold, 
