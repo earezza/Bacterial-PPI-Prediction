@@ -3,15 +3,17 @@
 """
 Description:
     Extracts Reciprocal Perspective (RP) features from all-to-all PPI predictions.
-    RP objects can be created given all-to-all .tsv file and labelled PPI .tsv file.
+    RP objects can be created given an all-to-all .tsv file and labelled PPI .tsv file.
     
     RP_AB object supports:
         Plotting one-to-all curves for a given protein ID.
         Plotting RP one-to-all curves for a given pair of protein IDs.
     
     Input arguements:
-        -f: paths to files containing all-to-all PPI predictions (.tsv)
-        -p: paths to files of labelled PPI pairs (.tsv)
+        -l: path to labeled dataset to convert to RP dataset (.tsv)
+        -p: path to directory containing all-to-all PPI prediction files
+        -t: path to directory containing training PPI files (.tsv) (from cross-validations)
+        -r: path to directory to save RP feature dataset
     
     Output files:
         A single .tsv file of RP features for each PPI found in given labelled pairs.
@@ -27,12 +29,8 @@ Description:
         matches the index of each labelled PPI file.
         
         e.g. 
-        python get_rp_features.py -f predictions1.tsv predictions2.tsv predictions3.tsv -p labels1.tsv labels2.tsv labels3.tsv
+        python get_rp_features.py -l labels.tsv -p PREDICTIONS/ -t CV_TRAINED/ -r RESULTS/
         
-        Thus, this will map the PPIs as follows:
-            predictions1.tsv : labels1.tsv
-            predictions2.tsv : labels2.tsv
-            predictions3.tsv : labels3.tsv
     
 @author: Eric Arezza
 Last Updated: May 11, 2021
@@ -45,27 +43,14 @@ from kneed import KneeLocator
 import matplotlib.pyplot as plt
 import time
 
-
-'''
-PIPR = '/home/erixazerro/PPIP/PIPR/Results/predictions_biogrid_Ecoli_PIPR_interactions_biogrid_Ecoli_PIPR_all_interactions.txt'
-DEEPFE = '/home/erixazerro/PPIP/DEEPFE-PPI/Results/predictions_BIOGRID_ECOLI_BIOGRID_ECOLI_ALL.txt'
-DPPI = '/home/erixazerro/PPIP/DPPI/Results/prediction-biogrid_Ecoli_DPPI-biogrid_Ecoli_all_DPPI_fold-1.txt'
-SPRINT = '/home/erixazerro/PPIP/SPRINT/Results/biogrid_Ecoli_all.txt'
-LABELS = '/home/erixazerro/PPIP/DATASETS/UNFORMATTED/biogrid_Ecoli_interactions.tsv'
-FILES = [PIPR, DEEPFE, DPPI, SPRINT]
-'''
-
-
-describe_help = 'python get_rp_features.py -f predictions.tsv -p labels.tsv'
+describe_help = 'python get_rp_features.py -l labels.tsv -p PREDICTIONS/ -t CV_TRAINED/ -r RESULTS/'
 parser = argparse.ArgumentParser(description=describe_help)
-parser.add_argument('-f', '--files', help='Path to all-to-all PPI predictions .tsv file', type=str, nargs='+')
-parser.add_argument('-p', '--pairs', help='Path to file containing labelled pairs', type=str, nargs='+')
-#parser.add_argument('-i', '--ids', help='List of protein IDs or protein ID pairs', type=str, nargs=1, required=False)
+parser.add_argument('-l', '--labels', help='Path to labeled PPIs file to convert to RP dataset (.tsv)', type=str)
+parser.add_argument('-p', '--predictions', help='Path to directory with all-to-all PPI prediction files', type=str)
+parser.add_argument('-t', '--trained', help='Path to directory with training files used to get all-to-all predictions (for cross-validations)', type=str)
+parser.add_argument('-r', '--results', help='Path to directory to save new RP dataset', type=str, default=os.getcwd()+'/')
 args = parser.parse_args()
 
-FILES = args.files
-PAIRS = args.pairs
-#IDS = args.ids
 
 class Labels(object):
     # For sifting through labelled PPI data
@@ -361,21 +346,19 @@ def get_protein_ppi(df, proteinID):
     df.reset_index(drop=True, inplace=True)
     return df
     
-
 def create_RP_dataset(predictions, labels):
+    pred = predictions.copy()
+    lab = labels.copy()
     start = time.time()
     df = pd.DataFrame()
-    for i in range(0, labels.shape[0]):
-        print('%s/%s'%(i,labels.shape[0]), end='')
-        rp = RP_AB(predictions, labels, labels
-                   .iloc[i][0], labels.iloc[i][1], describe_input=False)
+    for i in range(0, lab.shape[0]):
+        print('\r\t%s out of %s PPIs'%(i+1, lab.shape[0]), end='')
+        rp = RP_AB(pred, lab, lab.iloc[i][0], lab.iloc[i][1], describe_input=False)
         df = df.append(rp.get_rp_features(), ignore_index=True)
-        print('\r', end='')
-    print(time.time() - start)
-    labels.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
-    df = df.merge(labels, on=['Protein_A', 'Protein_B'])
+    print('\n\tTime:', round(time.time() - start, 2), 'seconds')
+    lab.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
+    df = df.merge(lab, on=['Protein_A', 'Protein_B'])
     return df
-
 
 def filter_dataset(df_rp, df_labels):
     rp = df_rp.copy()
@@ -390,56 +373,6 @@ def filter_dataset(df_rp, df_labels):
     df.reset_index(drop=True, inplace=True)
     return df
 
-'''
-def merge_SPRINT_all_to_all(labels):
-    
-    df = pd.DataFrame()
-    for k in range(1, 11):
-        
-        print('\n=== Fold %s ==='%k)
-        trained = '/home/erixazerro/PPIP/SPRINT/Results/biogrid_Ecoli_all_to_all/biogrid_Ecoli_SPRINT_all_to_all_fold_%s.txt'%k
-        pos_test = '/home/erixazerro/Documents/School/Thesis/DATA/CV_SET/biogrid_Ecoli_SPRINT/biogrid_Ecoli_SPRINT_pos_interactions_test-%s.txt'%k
-        neg_test = '/home/erixazerro/Documents/School/Thesis/DATA/CV_SET/biogrid_Ecoli_SPRINT/biogrid_Ecoli_SPRINT_neg_interactions_test-%s.txt'%k
-        
-        # Get all-to-all predictions from PPIs in training fold
-        df_trained_all = pd.read_csv(trained, header=None, delim_whitespace=True)
-        print('Trained all-to-all = ', df_trained_all.shape[0])
-        
-        # Get PPIs in test folds
-        df_test_pos = pd.read_csv(pos_test, header=None, delim_whitespace=True)
-        print('Test_pos =', df_test_pos.shape[0])
-        df_test_neg = pd.read_csv(neg_test, header=None, delim_whitespace=True)
-        print('Test_neg =', df_test_neg.shape[0])
-        df_test = df_test_pos.append(df_test_neg, ignore_index=True)
-        print('Test Fold PPIs =', df_test.shape[0])
-        
-        # Filter only PPIs with labels
-        labelled = df_trained_all.merge(labels, on=[0,1])
-        df_trained_all[[0,1]] = df_trained_all[[1,0]]
-        labelled = labelled.append(df_trained_all.merge(labels, on=[0,1]))
-        labelled.drop_duplicates(subset=[0,1], inplace=True)
-        labelled.reset_index(drop=True, inplace=True)
-        
-        # Pull tested PPIs for k-fold
-        merged = labelled.merge(df_test, on=[0, 1])
-        #print('Merged = ', merged.shape[0])
-        #df_test[[0, 1]] = df_test[[1, 0]]
-        #merged = merged.append(labelled.merge(df_test, on=[0, 1]), ignore_index=True)
-        #merged.drop_duplicates(subset=[0,1], inplace=True)
-        merged.reset_index(drop=True, inplace=True)
-        #print('Appended Merged =', merged.shape[0])
-        
-        # Add k-fold PPI predictions for tested PPIs
-        df = df.append(merged, ignore_index=True)
-        #print('df = ', df.shape[0])
-        df.drop_duplicates(inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        #print('df_dropdup = ', df.shape[0])
-        
-        # Set order of PPIs to match labels order
-        df = labels.merge(df, on=[0,1])[[0, 1, '2_x']]
-    return df
-'''
 # ========= Intended for processing cross-validation all-to-all predictions for Reciprocal Perspective ===========
 # Reads all k-fold subsets and all-to-all tested predictions
 # Removes training PPIs from all-to-all prediction for each k-fold
@@ -541,7 +474,7 @@ def average_all_to_all(cv_subset_dir_path, prediction_results_dir_path):
     
     # Get all-to-all PPI predictions to compile avgerage PPI scores
     prediction_files = os.listdir(path=prediction_results_dir_path)
-    pred_files = [ x for x in prediction_files if 'train' in x and 'prediction' in x ]
+    pred_files = [ x for x in prediction_files if 'prediction' in x ]
     pred_files.sort()
     
     if len(train_files) != len(pred_files):
@@ -552,13 +485,9 @@ def average_all_to_all(cv_subset_dir_path, prediction_results_dir_path):
     df_cv = pd.DataFrame()
     for i in range(0, len(train_files)):
         # Read trained PPI subset
-        #trained = pd.read_csv(cv_subset_dir_path + train_files[i], delim_whitespace=True, header=None)
         trained = read_df(cv_subset_dir_path + train_files[i])
-        
         # Read all-to-all PPI predictions
         predictions = pd.read_csv(prediction_results_dir_path + pred_files[i], delim_whitespace=True, header=None)
-        #predictions = read_df(prediction_results_dir_path + pred_files[i])
-        
         # Remove training PPIs from all-to-all tested predictions
         tested = remove_matching_pairs(trained, predictions)
         
@@ -576,33 +505,27 @@ def average_all_to_all(cv_subset_dir_path, prediction_results_dir_path):
     
     return df_cv
 
-
+#rp_fast = [ RP_AB(predictions, labels, labels.iloc[i][0], labels.iloc[i][1], describe_input=False).get_rp_feature() for i in range(0, labels.shape[0]) ]
 if __name__ == '__main__':
     
-    if FILES == None:
-        print("Missing input, provide correct path for one-to-all PPI prediction files...")
-        exit()
-    if PAIRS == None:
-        print("Missing input, provide correct path for PPI labelled pairs...")
-        exit()
-    # Map prediction files to label files (assumes order of FILES matches order of PAIRS)
-    if len(FILES) != len(PAIRS):
-        print("Number of files not matching number of labelled pairs files...")
-        exit()
+    if not os.path.exists(args.results):
+        os.mkdir(args.results)
     
-    if not os.path.exists(os.getcwd()+'/DATASETS/'):
-        os.mkdir(os.getcwd()+'/DATASETS/')
-        
-    mapped = {}
-    for f in range(0, len(FILES)):
-        mapped[FILES[f]] = PAIRS[f]
-        
-    for f, p in mapped.items():
-        predictions = pd.read_csv(f, delim_whitespace=True, header=None)
-        labels = pd.read_csv(p, delim_whitespace=True, header=None)
-        
-        rp = create_RP_dataset(predictions, labels)
-        rp.to_csv(os.getcwd()+'/DATASETS/RP_' + f.split('/')[-1].replace('.txt', '.tsv'), sep='\t', index=False)
-        
+    print('Reading labels...')
+    labels = pd.read_csv(args.labels, delim_whitespace=True, header=None)
+    save_name = 'RP_' + args.labels.split('/')[-1]
+    print('\t%s labelled PPIs'%labels.shape[0])
+    
+    print('Averaging k-fold predictions...')
+    avg_all_preds = average_all_to_all(args.trained, args.predictions)
+    all_predictions = avg_all_preds[[avg_all_preds.columns[0], avg_all_preds.columns[1], avg_all_preds.columns[-1]]]
+    print('\t%s all-to-all PPIs'%all_predictions.shape[0])
+    
+    print('Creating RP features dataset...')
+    rp = create_RP_dataset(all_predictions, labels)
+    print('\t%s RP features extracted for %s PPIs'%(rp.shape[1] - 3, rp.shape[0]))
+    
+    rp.to_csv(args.results + save_name, sep='\t', index=False)
+    print('Saved and done.')
     
     
