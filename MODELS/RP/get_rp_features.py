@@ -33,7 +33,7 @@ Description:
         
     
 @author: Eric Arezza
-Last Updated: May 11, 2021
+Last Updated: September 14, 2021
 """
 
 import os, argparse
@@ -345,7 +345,7 @@ def get_protein_ppi(df, proteinID):
     df.sort_values(by=df.columns[-1], ascending=False, inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
-    
+
 def create_RP_dataset(predictions, labels):
     pred = predictions.copy()
     lab = labels.copy()
@@ -505,7 +505,6 @@ def average_all_to_all(cv_subset_dir_path, prediction_results_dir_path):
     
     return df_cv
 
-#rp_fast = [ RP_AB(predictions, labels, labels.iloc[i][0], labels.iloc[i][1], describe_input=False).get_rp_feature() for i in range(0, labels.shape[0]) ]
 if __name__ == '__main__':
     
     if not os.path.exists(args.results):
@@ -527,5 +526,3 @@ if __name__ == '__main__':
     
     rp.to_csv(args.results + save_name, sep='\t', index=False)
     print('Saved and done.')
-    
-    

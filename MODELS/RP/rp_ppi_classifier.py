@@ -6,10 +6,12 @@ Description:
     RP datasets generated using rp_ppi.py based on PPI predictions from other models.
     
     Input arguements:
-        -f: paths to files containing RP PPI datasets (.tsv)
+        -f: paths to files containing RP PPI datasets (.tsv) (cross-validation with be performed)
+        -train:
+        -test: 
         -k: number of k-folds to perform cross-validation of given files (int)
         -d: delta imbalance ratio of labelled RP data as positives/total (float)
-        -c: perform CME (combines all dataset files) for PPI prediction (flag)
+        -c: perform CME (combines all dataset files provided by -f) for PPI prediction (flag)
     
     Output files:
         Prediction probabilities for PPIs (.tsv)
@@ -19,7 +21,7 @@ Description:
             - .txt of performance metrics
     
 @author: Eric Arezza
-Last Updated: May 11, 2021
+Last Updated: September 18, 2021
 """
 
 import os, argparse, time
@@ -32,33 +34,22 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 
-'''
-PIPR = '/home/erixazerro/CUBIC/PPIP/PREPROCESS/ECOLI/RP_biogrid_Ecoli_ID_511145_PIPR_interactions.tsv'
-DEEPFE = '/home/erixazerro/CUBIC/PPIP/PREPROCESS/ECOLI/RP_biogrid_Ecoli_ID_511145_DEEPFE_interactions.tsv'
-DPPI = '/home/erixazerro/CUBIC/PPIP/PREPROCESS/ECOLI/RP_biogrid_Ecoli_ID_511145_DPPI_interactions.tsv'
-SPRINT = '/home/erixazerro/CUBIC/PPIP/PREPROCESS/ECOLI/RP_biogrid_Ecoli_ID_511145_SPRINT_interactions.tsv'
-FILES = [PIPR, DEEPFE, DPPI, SPRINT]
-'''
-
-describe_help = 'python rp_ppi_classifier.py -f predictions.tsv -k 10'
+describe_help = 'python rp_ppi_classifier.py -f predictions1.tsv predictions2.tsv predictions3.tsv -d 0.5 -c -k 10' + '\nOR\n' \
+    + 'python rp_ppi_classifier.py -train trainData.tsv -test testData.tsv -d 0.5'
 parser = argparse.ArgumentParser(description=describe_help)
-parser.add_argument('-f', '--files', help='Filepath(s) of dataset(s) (.tsv file)', type=str, nargs='+')
-parser.add_argument('-train', '--train', help='Filepath(s) of training dataset(s) (.tsv file) to train model', type=str, nargs='+')
-parser.add_argument('-test', '--test', help='Filepath(s) of testing dataset(s) (.tsv file) to make predictions', type=str, nargs='+')
-parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, nargs=1, required=False)
-parser.add_argument('-d', '--delta', help='Imbalance ratio as positives/total (e.g. balanced = 0.5)', type=float, nargs=1, required=False)
+parser.add_argument('-f', '--files', help='Filepath(s) of dataset(s) (.tsv file) if cross-validation', type=str, nargs='+')
+parser.add_argument('-train', '--train', help='Filepath(s) of training dataset(s) (.tsv file) to train model', type=str)
+parser.add_argument('-test', '--test', help='Filepath(s) of testing dataset(s) (.tsv file) to make predictions', type=str)
+parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, nargs=1, required=False, default=10)
+parser.add_argument('-d', '--delta', help='Imbalance ratio as positives/total (e.g. balanced = 0.5)', type=float, nargs=1, required=False, default=0.5)
 parser.add_argument('-c', '--cme', help='Perform a combination of multiple experts (combine datasets provided in -files)', action='store_true', default=False)
+parser.add_argument('-r', '--results', help='Path to directory for saving prediction results', type=str, default=os.getcwd()+'/RESULTS/')
+parser.add_argument('-n', '--name', help='Name for saving files (optional, will default to modified filenames)', type=str, default='')
 args = parser.parse_args()
 
 FILES = args.files
-if args.k_folds is None:
-    K_FOLDS = 10
-else:
-    K_FOLDS = args.k_folds[0]
-if args.delta is None:
-    IMBALANCE = 0.5
-else:
-    IMBALANCE = args.delta[0]
+K_FOLDS = args.k_folds
+IMBALANCE = args.delta
 RATIO = '1:' + str(int((1/IMBALANCE) - 1))
 
 def recalculate_precision(df, precision, thresholds, ratio=IMBALANCE):
@@ -70,57 +61,127 @@ def recalculate_precision(df, precision, thresholds, ratio=IMBALANCE):
         fp = fp*(1 - delta)
         new_precision[t] = tp/(tp+fp)
     return new_precision
-'''
-def plot_curves(filename, df):
-    
-    # Plot precision-recall curve
-    precision, recall, thresholds = metrics.precision_recall_curve(df['Truth'], df['Score'])
-    precision = recalculate_precision(df, precision, thresholds)
-    if IMBALANCE == 0.5:
-        auc_pr = metrics.average_precision_score(df['Truth'], df['Score'])
-    else:
-        auc_pr = metrics.auc(recall, precision)
-    plt.figure()
-    plt.plot(recall, precision, label='AUC='+str(round(auc_pr, 4)))
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.xlim([-0.05, 1.05])
-    plt.ylim([-0.05, 1.05])
-    plt.title('Precision-Recall Curve - ' + RATIO)
-    plt.legend(handlelength=0)
-    plt.savefig(os.getcwd() + '/RESULTS/performance_' + filename + '_PR.png', format='png')
-    
-    # Plot ROC curve
-    fpr, tpr, __ = metrics.roc_curve(df['Truth'], df['Score'])
-    if IMBALANCE == 0.5:
-        auc_roc = metrics.roc_auc_score(df['Truth'], df['Score'])
-    else:
-        auc_roc = metrics.auc(fpr, tpr)
-    plt.figure()
-    plt.plot(fpr, tpr, label='AUC='+str(round(auc_roc, 4)))
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.xlim([-0.05, 1.05])
-    plt.ylim([-0.05, 1.05])
-    plt.title('ROC Curve')
-    plt.legend(handlelength=0)
-    plt.savefig(os.getcwd() + '/RESULTS/performance_' + filename + '_ROC.png', format='png')
-'''
 
 if __name__ == '__main__':
     
-    if len(FILES) == 0:
-        print('No data provided')
-        exit()
-    if not os.path.exists(os.getcwd()+'/RESULTS/'):
-        os.mkdir(os.getcwd()+'/RESULTS/')
+    if not os.path.exists(args.results):
+        os.mkdir(args.results)
     
+    # ================== FOR SINGLE TRAIN/TEST RUNS ==================
+    if FILES == None and args.train != None and args.test != None:
+        t_start = time.time()
+        print('Training on %s\nTesting on %s\n'%(args.train.split('/')[-1], args.test.split('/')[-1]))
+        
+        # Load data
+        df_train = pd.read_csv(args.train, delim_whitespace=True)
+        df_test = pd.read_csv(args.test, delim_whitespace=True)
+        
+        # Define data and labels
+        pairs_train = np.array(df_train[df_train.columns[0:2]])
+        X_train = np.array(df_train[df_train.columns[2:-1]])
+        y_train = np.array(df_train[df_train.columns[-1]])
+        pairs_test = np.array(df_test[df_test.columns[0:2]])
+        X_test = np.array(df_test[df_test.columns[2:-1]])
+        y_test = np.array(df_test[df_test.columns[-1]])
+        
+        # Filename for saving predictions
+        if args.name == '':
+            save_name = args.test.split('.')[0].split('/')[-1]
+        else:
+            save_name = args.name
+            
+        # Define classifier model and pipeline
+        clf = RandomForestClassifier(random_state=13052021)
+        pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
+        
+        # Fit model with training data
+        pipe.fit(X_train, y_train)
+        
+        # Record PPI binary predictions
+        pred = pipe.predict(X_test)
+        ppi_bin = pd.DataFrame(pairs_test, columns=[df_test.columns[0], df_test.columns[1]])
+        ppi_bin.insert(2, 2, pred)
+        
+        # Record PPI prediction probabilities
+        pred_probs = pipe.predict_proba(X_test)
+        ppi_probs = pd.DataFrame(np.append(pairs_test, pred_probs, axis=1), columns=[df_test.columns[0], df_test.columns[1], 2, 3])
+        ppi_probs.drop(columns=[2], inplace=True)
+        ppi_probs.to_csv(args.results + 'predictions_' + save_name + '.tsv', sep='\t', header=None, index=False)
+        
+        # Get performance metricss of binary evaluation (threshold=0.5)
+        tn, fp, fn, tp = metrics.confusion_matrix(y_test, pred).ravel()
+        print('tp='+str(tp), 'fp='+str(fp), 'tn='+str(tn), 'fn='+str(fn))
+        
+        accuracy = (tp + tn) / (tn + fp + fn + tp)
+        prec = tp / (tp + fp + 1e-06)
+        rec = tp / (tp + fn + 1e-06)
+        spec = tn / (tn + fp + 1e-06)
+        f1 = 2. * (prec * rec) / (prec + rec + 1e-06)
+        mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ** 0.5)
+        
+        auc_roc = metrics.roc_auc_score(y_test, pred_probs[:, 1])
+        auc_pr = metrics.average_precision_score(y_test, pred_probs[:, 1])
+        fpr, tpr, __ = metrics.roc_curve(y_test, pred_probs[:, 1])
+        
+        print('acc=' + str(round(accuracy, 4)), 'prec=' + str(round(prec, 4)), 'recall=' + str(round(rec, 4)), \
+              'spec=' + str(round(spec, 4)), 'f1=' + str(round(f1, 4)), 'mcc=' + str(round(mcc, 4)))
+                
+        # Get performance metricss for curve plotting
+        # Evaluate performance and adjust for hypothetical imbalance
+        precision, recall, thresholds = metrics.precision_recall_curve(y_test, pred_probs[:, 1])
+        truth_score = pd.DataFrame(data={'Truth':y_test, 'Score':pred_probs[:, 1]})
+        precision = recalculate_precision(truth_score, precision, thresholds, ratio=IMBALANCE)
+        fpr, tpr, __ = metrics.roc_curve(y_test, pred_probs[:, 1])
+        if IMBALANCE == 0.5:
+            pr_auc = metrics.average_precision_score(y_test, pred_probs[:, 1])
+        else:
+            pr_auc = metrics.auc(recall, precision)
+        roc_auc = metrics.roc_auc_score(y_test, pred_probs[:, 1])
+        print('auc_roc=%.6f'%(roc_auc) + '\nauc_pr=%.6f'%(pr_auc))
+        
+        duration = time.time() - t_start
+        
+        results ='accuracy=%.4f'%(accuracy) + '\nprecision=%.4f'%(prec) + '\nrecall=%.4f'%(rec) + '\nspecificity=%.4f'%(spec) \
+                + '\nf1=%.4f'%(f1) + '\nmcc=%.4f'%(mcc) + '\nroc_auc=%.4f'%(roc_auc) + '\npr_auc=%.4f'%(pr_auc) \
+                + '\ntime(sec.)=%.2f'%(duration) + '\n'
+        print('----- Results -----\n' + results)
+        # Write results to file
+        result_filename = args.results + 'results_' + save_name + '.txt'
+        with open(result_filename, 'w') as fp:
+            fp.write(results)
+        
+        # Plot and save curves
+        plt.figure
+        plt.plot(recall, precision, color='black', label='AUC = %0.4f' % (pr_auc))
+        plt.xlabel('Recall')
+        plt.ylabel('Precision') 
+        plt.xlim([-0.05, 1.05])
+        plt.ylim([-0.05, 1.05])
+        plt.title("Precision-Recall Curve - %s %s"%(save_name, RATIO))
+        plt.legend(loc='best', handlelength=0)
+        plt.savefig(args.results + 'performance_' + save_name + '_PR.png', format='png')
+        plt.close()
+        
+        plt.figure
+        plt.plot(fpr, tpr, color='black', label='AUC = %0.4f' % (roc_auc))
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.xlim([-0.05, 1.05])
+        plt.ylim([-0.05, 1.05])
+        plt.title("ROC Curve - %s %s"%(save_name, RATIO))
+        plt.legend(loc='lower right', handlelength=0)
+        plt.savefig(args.results + 'performance_' + save_name + '_ROC.png', format='png')
+        plt.close()
+        
+        exit()
+        
+    # ================== FOR CROSS-VALIDATION RUNS ==================
     # Combine feature vectors for PPIs from all files
     if args.cme:
         print('Performing CME...')
         # Load first file
         df_cme = pd.read_csv(FILES[0], delim_whitespace=True)
-        cme_name = FILES[0].split('/')[-1].split('_')
+        cme_name = FILES[0].split('.')[0].split('/')[-1].split('_')
         # Append remaining files
         for f in range(1, len(FILES)):
             # Read files
@@ -128,18 +189,26 @@ if __name__ == '__main__':
             df_cme = df_cme.merge(df, on=[df.columns[0], df.columns[1]])
             df_cme.drop(columns=['label_x'], inplace=True)
             df_cme.rename(columns={'label_y': 'label'}, inplace=True)
-            [cme_name.append(s) for s in FILES[f].split('/')[-1].split('_') if s not in cme_name]
-        cme_name.sort()
+            [cme_name.append(s) for s in FILES[f].split('.')[0].split('/')[-1].split('_') if s not in cme_name]
+        #cme_name.sort()
         cme_name = '_'.join(i for i in cme_name)
         FILES = [cme_name]
+        if args.name == '':
+            save_name = cme_name
+        else:
+            save_name = args.name
         
     for f in FILES:
-        
+        print('Performing cross-validation run on %s'%([i.split('/')[-1] for i in FILES]))
         # Run CME using previously created df from files, else use df from files individually
         if args.cme:
             df = df_cme.copy()
         else:       
             df = pd.read_csv(f, delim_whitespace=True)
+            if args.name == '':
+                save_name = f.split('.')[0].split('/')[-1]
+            else:
+                save_name = args.name
         
         # Define data and labels
         pairs = np.array(df[df.columns[0:2]])
@@ -199,6 +268,7 @@ if __name__ == '__main__':
             pred_probs = pipe.predict_proba(X[test])
             ppi_probs = pd.DataFrame(np.append(pairs[test], pred_probs, axis=1), columns=[df.columns[0], df.columns[1], 2, 3])
             ppi_probs.drop(columns=[2], inplace=True)
+            ppi_probs.to_csv(args.results + 'predictions_' + save_name + '_fold-%s'%k + '.tsv', sep='\t', header=None, index=False)
             prob_predictions = prob_predictions.append(ppi_probs)
             
             # Get performance metricss of binary evaluation (threshold=0.5)
@@ -207,21 +277,21 @@ if __name__ == '__main__':
             
             accuracy = (tp + tn) / (tn + fp + fn + tp)
             prec = tp / (tp + fp + 1e-06)
-            recall = tp / (tp + fn + 1e-06)
+            rec = tp / (tp + fn + 1e-06)
             spec = tn / (tn + fp + 1e-06)
-            f1 = 2. * (prec * recall) / (prec + recall + 1e-06)
+            f1 = 2. * (prec * rec) / (prec + rec + 1e-06)
             mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ** 0.5)
             
             auc_roc = metrics.roc_auc_score(y[test], pred_probs[:, 1])
             auc_pr = metrics.average_precision_score(y[test], pred_probs[:, 1])
             fpr, tpr, __ = metrics.roc_curve(y[test], pred_probs[:, 1])
             
-            print('acc=' + str(round(accuracy, 4)), 'prec=' + str(round(prec, 4)), 'recall=' + str(round(recall, 4)), \
+            print('acc=' + str(round(accuracy, 4)), 'prec=' + str(round(prec, 4)), 'recall=' + str(round(rec, 4)), \
                   'spec=' + str(round(spec, 4)), 'f1=' + str(round(f1, 4)), 'mcc=' + str(round(mcc, 4)))
             
             avg_accuracy.append(accuracy)
             avg_precision.append(prec)
-            avg_recall.append(recall)
+            avg_recall.append(rec)
             avg_specificity.append(spec)
             avg_f1.append(f1)
             avg_mcc.append(mcc)
@@ -240,7 +310,7 @@ if __name__ == '__main__':
             else:
                 pr_auc = metrics.auc(recall, precision)
             roc_auc = metrics.roc_auc_score(y[test], pred_probs[:, 1])
-            print('auc_roc=', roc_auc, '\nauc_pr=', pr_auc)
+            print('auc_roc=%.6f'%(roc_auc) + '\nauc_pr=%.6f'%(pr_auc))
             # Add k-fold performance for overall average performance
             tprs[k] = tpr
             fprs[k] = fpr
@@ -262,7 +332,7 @@ if __name__ == '__main__':
         bin_predictions.reset_index(drop=True, inplace=True)
     
         # Write PPI predictions to file
-        pred_filename = result_filename = os.getcwd() + '/RESULTS/predictions_' + f.split('/')[-1]
+        pred_filename = result_filename = args.results + 'predictions_' + save_name + '.tsv'
         prob_predictions.to_csv(pred_filename, sep='\t', header=None, index=False)
         
         results ='accuracy=%.4f (+/- %.4f)'%(np.mean(avg_accuracy), np.std(avg_accuracy)) \
@@ -277,14 +347,11 @@ if __name__ == '__main__':
                       + '\n'
         print('----- Results -----\n' + results)
         # Write results to file
-        result_filename = os.getcwd() + '/RESULTS/results_' + f.split('/')[-1].replace('.tsv', '.txt')
+        result_filename = args.results + 'results_' + save_name + '.txt'
         with open(result_filename, 'w') as fp:
             fp.write(results)
         
         truth_score = pd.DataFrame(data={'Truth':y, 'Score':prob_predictions[prob_predictions.columns[-1]]})
-        
-        # Plot performance curves
-        #plot_curves(f.split('/')[-1].replace('.tsv', ''), truth_score)
         
         # Get overall performance across all folds
         precision, recall, thresholds = metrics.precision_recall_curve(truth_score['Truth'], truth_score['Score'])
@@ -305,9 +372,9 @@ if __name__ == '__main__':
         plt.ylabel('Precision') 
         plt.xlim([-0.05, 1.05])
         plt.ylim([-0.05, 1.05])
-        plt.title("Precision-Recall Curve - %s %s"%(f.split('/')[-1].replace('.tsv', ''), RATIO))
+        plt.title("Precision-Recall Curve - %s %s"%(save_name, RATIO))
         plt.legend(loc='best', handlelength=0)
-        plt.savefig(os.getcwd() + '/RESULTS/performance_' + f.split('/')[-1].replace('.tsv', '_PR.png'), format='png')
+        plt.savefig(args.results + 'performance_' + save_name + '_PR.png', format='png')
         plt.close()
         
         plt.figure
@@ -318,8 +385,8 @@ if __name__ == '__main__':
         plt.ylabel('True Positive Rate')
         plt.xlim([-0.05, 1.05])
         plt.ylim([-0.05, 1.05])
-        plt.title("ROC Curve - %s %s"%(f.split('/')[-1].replace('.tsv', ''), RATIO))
+        plt.title("ROC Curve - %s %s"%(save_name, RATIO))
         plt.legend(loc='lower right', handlelength=0)
-        plt.savefig(os.getcwd() + '/RESULTS/performance_' + f.split('/')[-1].replace('.tsv', '_ROC.png'), format='png')
+        plt.savefig(args.results + 'performance_' + save_name + '_ROC.png', format='png')
         plt.close()
         
