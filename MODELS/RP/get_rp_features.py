@@ -14,6 +14,7 @@ Description:
         -p: path to directory containing all-to-all PPI prediction files
         -t: path to directory containing training PPI files (.tsv) (from cross-validations)
         -r: path to directory to save RP feature dataset
+        -m: flag to use multiprocessing, will use all available cpus
     
     Output files:
         A single .tsv file of RP features for each PPI found in given labelled pairs.
@@ -33,7 +34,7 @@ Description:
         
     
 @author: Eric Arezza
-Last Updated: September 14, 2021
+Last Updated: October 13, 2021
 """
 
 import os, argparse
@@ -42,6 +43,8 @@ import pandas as pd
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
 import time
+import tqdm as tqdm
+import multiprocessing
 
 describe_help = 'python get_rp_features.py -l labels.tsv -p PREDICTIONS/ -t CV_TRAINED/ -r RESULTS/'
 parser = argparse.ArgumentParser(description=describe_help)
@@ -49,6 +52,7 @@ parser.add_argument('-l', '--labels', help='Path to labeled PPIs file to convert
 parser.add_argument('-p', '--predictions', help='Path to directory with all-to-all PPI prediction files', type=str)
 parser.add_argument('-t', '--trained', help='Path to directory with training files used to get all-to-all predictions (for cross-validations)', type=str)
 parser.add_argument('-r', '--results', help='Path to directory to save new RP dataset', type=str, default=os.getcwd()+'/')
+parser.add_argument('-m', '--multiprocessing', help='Flag to use multiprocessing', action='store_true', default=False)
 args = parser.parse_args()
 
 
@@ -351,13 +355,29 @@ def create_RP_dataset(predictions, labels):
     lab = labels.copy()
     start = time.time()
     df = pd.DataFrame()
-    for i in range(0, lab.shape[0]):
-        print('\r\t%s out of %s PPIs'%(i+1, lab.shape[0]), end='')
+    for i in tqdm.tqdm(range(0, lab.shape[0]), total=lab.shape[0]):
         rp = RP_AB(pred, lab, lab.iloc[i][0], lab.iloc[i][1], describe_input=False)
         df = df.append(rp.get_rp_features(), ignore_index=True)
     print('\n\tTime:', round(time.time() - start, 2), 'seconds')
     lab.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
     df = df.merge(lab, on=['Protein_A', 'Protein_B'])
+    return df
+
+# Running parallel processes to speed up RP feature extraction
+def get_rp(i):
+    return RP_AB(PREDICTIONS, LABELS, LABELS.iloc[i][0], LABELS.iloc[i][1], describe_input=False).get_rp_features()
+def create_RP_dataset_parallel(predictions, labels, processors=os.cpu_count()):
+    start = time.time()
+
+    with multiprocessing.Pool(processors) as pool:
+        df = list(tqdm.tqdm(pool.imap(get_rp, range(0, labels.shape[0])), total=labels.shape[0]))
+
+    df = pd.concat(df, ignore_index=True)
+    LABELS.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
+    df = df.merge(LABELS, on=['Protein_A', 'Protein_B'])
+    print('\n\tTime:', round(time.time() - start, 2), 'seconds')
+    pool.close()
+    pool.join()
     return df
 
 def filter_dataset(df_rp, df_labels):
@@ -521,7 +541,13 @@ if __name__ == '__main__':
     print('\t%s all-to-all PPIs'%all_predictions.shape[0])
     
     print('Creating RP features dataset...')
-    rp = create_RP_dataset(all_predictions, labels)
+    if args.multiprocessing:
+        print('\tExecuting parallel...%s cpus'%os.cpu_count())
+        PREDICTIONS = all_predictions.copy()
+        LABELS = labels.copy()
+        rp = create_RP_dataset_parallel(PREDICTIONS, LABELS)
+    else:
+        rp = create_RP_dataset(all_predictions, labels)
     print('\t%s RP features extracted for %s PPIs'%(rp.shape[1] - 3, rp.shape[0]))
     
     rp.to_csv(args.results + save_name, sep='\t', index=False)
