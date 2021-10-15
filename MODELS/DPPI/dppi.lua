@@ -416,8 +416,8 @@ function get_kfold_split( Data , k )
     train[i] = {}
     test[i] = {}
     local shuffle = torch.randperm(#Data)
-    local train_size = math.floor(shuffle:size()[1]*0.8 + 0.5)
-    local test_size = math.floor(shuffle:size()[1]*0.2 + 0.5)
+    local train_size = math.floor(shuffle:size()[1]*(1.0 - (1.0/k)) + 0.5)
+    local test_size = math.floor(shuffle:size()[1]*(1.0/k) + 0.5)
     for j=1, train_size do
       train[i][j] = Data[ shuffle[j] ]
     end
