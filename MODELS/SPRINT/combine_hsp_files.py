@@ -3,7 +3,7 @@
 """
 Created on Tue Oct  5 16:49:50 2021
 
-@author: erixazerro
+@author: earezza
 """
 
 import os, argparse
@@ -51,7 +51,7 @@ if __name__ == '__main__':
         hsps[h] = convert_hsp_to_df(hsps[h])
 
     # Combine all
-    print('Combining HSP dataframes...'%h)
+    print('Combining HSP dataframes...')
     hsp = pd.concat(hsps, ignore_index=True)
     
     # Group all hsps found for all pairs from all files
