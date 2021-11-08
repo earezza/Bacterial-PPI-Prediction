@@ -18,6 +18,7 @@
 #include <sstream>
 using namespace std;
 int PROTEOME = 0;
+int PROTEOME_ONE_TO_ALL = 0;
 string PROTEIN_FN;
 string HSP_FN;
 string TRAIN_FN;

@@ -30,6 +30,7 @@ public:
 	void load_traing(string traing_file_name, PtoHSP & hsp);	//reading from training set, and adding the score into SCORE_MAT
 	void load_test(string pos_file_name, char flag);//could load both pos_set or neg_set, char flag; 'n': neg; 'p': pos
 	void print_entire_final_score_matrix();
+	void print_entire_final_one_to_all();
 };
 SCORING_MATRIX::SCORING_MATRIX(PtoHSP & hsp){
 	num_pos = 0;
@@ -171,10 +172,8 @@ void SCORING_MATRIX :: print_entire_final_score_matrix(){
 	fout.close();
 }
 
-/*
 // TO PRINT EACH ONE-TO-ALL FILE FOR EVERY PROTEIN (many files generated)
-void SCORING_MATRIX :: print_entire_final_score_matrix(){
-    //ofstream fout(OUTPUT_FN.c_str());
+void SCORING_MATRIX :: print_entire_final_one_to_all(){
     for(int a = 0; a < num_protein; a ++){
         ofstream fout(OUTPUT_FN.c_str() + p_id_name.at(a) + ".csv");
         fout<<"protein_a,protein_b,SPRINT_score\n";
@@ -183,8 +182,7 @@ void SCORING_MATRIX :: print_entire_final_score_matrix(){
         }
         fout.close();
     }
-	//fout.close();
 }
-*/
+
 
 #endif /* SCOREING_MATRIX_H_ */

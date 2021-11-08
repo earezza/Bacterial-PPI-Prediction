@@ -37,6 +37,9 @@ int main(int argc, char * argv[]) {
 		if(!strcmp(argv[a], "-e")){
 			PROTEOME = 1;
 		}
+		if(!strcmp(argv[a], "-a")){
+			PROTEOME_ONE_TO_ALL = 1;
+		}
 		if(!strcmp(argv[a], "-Thc")){
 			T_hsp_max = atoi(argv[a+1]);
 		}
@@ -68,8 +71,14 @@ int main(int argc, char * argv[]) {
 		score_matrix.load_test(TEST_FN_NEG, 'n');
 	}	
 	else{//print the entire proteome score
-		cout<<"printing the entire proteome score"<<endl;
-		score_matrix.print_entire_final_score_matrix();
+    	if(PROTEOME_ONE_TO_ALL){
+        	cout<<"printing the entire proteome score one-to-all files"<<endl;
+    		score_matrix.print_entire_final_one_to_all();
+    	}
+    	else{
+    		cout<<"printing the entire proteome score"<<endl;
+    		score_matrix.print_entire_final_score_matrix();
+		}
 	}	
     cout<<"----end------"<<endl;
 	return 0;
