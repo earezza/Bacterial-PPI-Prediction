@@ -6,9 +6,9 @@ Description:
     RP datasets generated using rp_ppi.py based on PPI predictions from other models.
     
     Input arguements:
-        -f: paths to files containing RP PPI datasets (.tsv) (cross-validation with be performed)
-        -train:
-        -test: 
+        -f: paths to files containing RP PPI datasets (.tsv) (cross-validation will be performed, otherwise input -train and -test)
+        -train: Filepath(s) of training dataset(s) (.tsv file)
+        -test: Filepath(s) of testing dataset(s) (.tsv file)
         -k: number of k-folds to perform cross-validation of given files (int)
         -d: delta imbalance ratio of labelled RP data as positives/total (float)
         -c: perform CME (combines all dataset files provided by -f) for PPI prediction (flag)
@@ -28,7 +28,9 @@ import os, argparse, time
 import pandas as pd
 import numpy as np
 from sklearn import metrics
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from lightgbm.sklearn import LGBMClassifier
+import xgboost as xgb
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -91,8 +93,18 @@ if __name__ == '__main__':
             save_name = args.name
             
         # Define classifier model and pipeline
-        clf = RandomForestClassifier(random_state=13052021)
-        pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
+        #clf = RandomForestClassifier(random_state=13052021)
+        clf = LGBMClassifier(random_state=13052021, 
+                             boosting_type='goss', 
+                             num_leaves=40, 
+                             learning_rate=0.15)
+        '''
+        clf = xgb.XGBClassifier(random_state=13052021, 
+                                use_label_encoder=False, 
+                                eval_metric='mlogloss')
+        '''
+        #pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
+        pipe = Pipeline([('scaler', StandardScaler()), ('lgbm', clf)])
         
         # Fit model with training data
         pipe.fit(X_train, y_train)
@@ -159,7 +171,10 @@ if __name__ == '__main__':
         plt.ylim([-0.05, 1.05])
         plt.title("Precision-Recall Curve - %s %s"%(save_name, RATIO))
         plt.legend(loc='best', handlelength=0)
-        plt.savefig(args.results + 'performance_' + save_name + '_PR.png', format='png')
+        if args.delta == 0.5:
+            plt.savefig(args.results + 'performance_' + save_name + '_PR.png', format='png')
+        else:
+            plt.savefig(args.results + 'performance_' + save_name + 'Imbalanced_PR.png', format='png')
         plt.close()
         
         plt.figure
@@ -170,7 +185,10 @@ if __name__ == '__main__':
         plt.ylim([-0.05, 1.05])
         plt.title("ROC Curve - %s %s"%(save_name, RATIO))
         plt.legend(loc='lower right', handlelength=0)
-        plt.savefig(args.results + 'performance_' + save_name + '_ROC.png', format='png')
+        if args.delta == 0.5:
+            plt.savefig(args.results + 'performance_' + save_name + '_ROC.png', format='png')
+        else:
+            plt.savefig(args.results + 'performance_' + save_name + '_Imbalanced_ROC.png', format='png')
         plt.close()
         
         exit()
@@ -224,8 +242,12 @@ if __name__ == '__main__':
         kf = StratifiedKFold(n_splits=K_FOLDS)
         
         # Define classifier model and pipeline
-        clf = RandomForestClassifier(random_state=13052021)
-        pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
+        #clf = RandomForestClassifier(random_state=13052021)
+        clf = xgb.XGBClassifier(random_state=13052021, 
+                                use_label_encoder=False, 
+                                eval_metric='mlogloss')
+        #pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
+        pipe = Pipeline([('scaler', StandardScaler()), ('boost', clf)])
         
         # Metrics for evaluation
         avg_accuracy = []
