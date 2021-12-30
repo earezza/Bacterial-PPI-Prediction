@@ -15,7 +15,7 @@
     Main modifications include a change of command-line argument usage for execution and a choice of cross-validation 
     or a single train/test split. Prediction probabilities of each interaction in test data are also saved to file.
     Author: Eric Arezza
-    Last Updated: March 9, 2021
+    Last Updated: December 29, 2021
     
     Description:
         Res2evc embedding for sequence representation in deep learning approach to binary classification of protein-protein interaction prediction.
@@ -52,6 +52,8 @@ from keras.layers.core import Dense, Dropout, Merge
 #from keras.layers.merge import Concatenate
 from sklearn.preprocessing import StandardScaler
 from keras.regularizers import l2
+#import smart_open
+#smart_open.open = smart_open.smart_open
 from gensim.models import Word2Vec
 import copy
 import h5py
@@ -62,72 +64,51 @@ import pandas as pd
 from keras.optimizers import SGD
 #from datetime import datetime
 import psutil
+import tqdm
 
 # Description of command-line usage
 describe_help = 'python deepfe_res2vec.py trainFiles/ testFiles/'
 parser = argparse.ArgumentParser(description=describe_help)
-parser.add_argument('train', help='Path to file containing binary protein interactions for training (.tsv)', type=str, nargs=1)
-parser.add_argument('test', help='Path to file containing binary protein interactions for testing (.tsv)', type=str, nargs=1)
-parser.add_argument('-s', '--size', help='Size (int)', type=int, nargs=1, required=False)
-parser.add_argument('-w', '--window', help='Window size (int)', type=int, nargs=1, required=False)
-parser.add_argument('-l', '--length', help='Max length (int)', type=int, nargs=1, required=False)
-parser.add_argument('-b', '--batch', help='Batch size (int)', type=int, nargs=1, required=False)
-parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, nargs=1, required=False)
-parser.add_argument('-r','--results', help='Path to file to store results', type=str, nargs=1, required=False)
-parser.add_argument('-d','--dictionary', help='Path to word2vec model/dictionary', default='', type=str, nargs=1, required=False)
-parser.add_argument('-save', '--saveModel', help='Save model', action='store_true', default=False)
-parser.add_argument('-load','--loadModel', help='Path to pre-trained model', default='', type=str, nargs=1, required=False)
-parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, nargs=1, required=False)
+parser.add_argument('train', help='Path to file containing binary protein interactions for training (.tsv)', type=str)
+parser.add_argument('test', help='Path to file containing binary protein interactions for testing (.tsv)', type=str)
+parser.add_argument('-res2vec', '--res2vec', help='Path to Res2vec model file, otherwise will create model based on dataset sequences', type=str)
+parser.add_argument('-seq', '--word2vec_sequences', help='Path to .fasta file with sequences to build and use new word2vec model (optional)', type=str)
+parser.add_argument('-s', '--size', help='Size dimentionality of res2vec vectors (int)', type=int, default=20)
+parser.add_argument('-w', '--window', help='Window size for Skip-gram context parameter, number of residues (int)', type=int, default=4)
+parser.add_argument('-l', '--max_length', help='Max length of proteins for deep learning (int)', type=int, default=850)
+parser.add_argument('-b', '--batch_size', help='Batch size (int)', type=int, default=256)
+parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, default=50)
+parser.add_argument('-r','--results', help='Path to file to store results', type=str)
+parser.add_argument('-save', '--saveModel', help='Save DeepFE model', action='store_true', default=False)
+parser.add_argument('-load','--loadModel', help='Path to pre-trained DeepFE model', type=str)
+parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, default=5)
 args = parser.parse_args()
 
-if args.window is None:
-    window = 4
-else:
-    window = args.window[0]
-if args.batch is None:
-    batch_size = 256
-else:
-    batch_size = args.batch[0]
-if args.epochs is None:
-    n_epochs = 50
-else:
-    n_epochs = args.epochs[0]
-if args.size is None:
-    size = 20
-else:
-    size = args.size[0]
-if args.length is None:
-    maxlen = 850
-else:
-    maxlen = args.length[0]
-if args.loadModel == '':
-    pretrained = None
-else:
-    pretrained = args.loadModel[0]
-if args.dictionary == '':
-    wv_path = None
-else:
-    wv_path = args.dictionary[0]
-if args.k_folds is None:
-    K_FOLDS = 5
-else:
-    K_FOLDS = args.k_folds[0]
+res2vec_model = args.res2vec
+word2vec_sequences = args.word2vec_sequences
+window = args.window
+batch_size = args.batch_size
+n_epochs = args.epochs
+size = args.size
+maxlen = args.max_length
+pretrained = args.loadModel
+K_FOLDS = args.k_folds
+TRAIN_PATH = args.train
+TEST_PATH = args.test
 
-TRAIN_PATH = args.train[0]
-TEST_PATH = args.test[0]
 CROSS_VALIDATE = False
 if TRAIN_PATH == TEST_PATH:
     CROSS_VALIDATE = True
     
-if args.results is None:
-    #rst_file = os.getcwd()+'/Results/results_'+datetime.now().strftime("%d-%m-%Y_")+datetime.now().strftime("%H-%M-%S.txt")    
+if args.results == None:
     rst_file = os.getcwd()+'/Results/results_' + TRAIN_PATH.split('/')[-2] + '_' + TEST_PATH.split('/')[-2] + '.txt'
 else:
     rst_file = args.results
 
+print(args)
 print("\n---Using the following---\nTraining Files: {}\nTesting Files: {}".format(TRAIN_PATH, TEST_PATH))
 print("Size: {}\nWindow: {}\nLength: {}\nBatch: {}\nEpochs: {}\n".format(size, window, maxlen, batch_size, n_epochs))
-print('Save model: {}\nLoad model: {}'.format(args.saveModel, pretrained))
+print('Res2Vec model: {}\nSave model: {}\nLoad model: {}'.format(res2vec_model, args.saveModel, pretrained))
 def averagenum(num):
     nsum = 0
     for i in range(len(num)):
@@ -145,7 +126,7 @@ def max_min_avg_length(seq):
     
     print('The longest length of protein is: '+str(maxNum))
     print('The shortest length of protein is: '+str(minNum))
-    print('The avgest length of protein is: '+str(avg))
+    print('The avg length of protein is: '+str(avg))
 
 def merged_DBN(sequence_len):
     # left model
@@ -191,20 +172,11 @@ def merged_DBN(sequence_len):
     return model
     
 def token(dataset):
-    token_dataset = []
-    for i in range(len(dataset)):
-        seq = []
-        for j in range(len(dataset[i])):
-            seq.append(dataset[i][j])
-        token_dataset.append(seq)  
+    token_dataset = np.array([ list(dataset[i]) for i in range(len(dataset)) ], dtype=object)  
     return  token_dataset
     
 def padding_J(protein,maxlen):           
-    padded_protein = copy.deepcopy(protein)   
-    for i in range(len(padded_protein)):
-        if len(padded_protein[i])<maxlen:
-            for j in range(len(padded_protein[i]),maxlen):
-                padded_protein[i].append('J')
+    padded_protein = np.array( [ np.append(protein[i], np.array(['J']*(maxlen-len(protein[i])))) for i in range(len(protein)) ], dtype=object) 
     return padded_protein  
     
 def protein_representation(wv,tokened_seq_protein,maxlen,size):  
@@ -216,27 +188,15 @@ def protein_representation(wv,tokened_seq_protein,maxlen,size):
                 temp_sentence.extend(np.zeros(size))
             else:
                 temp_sentence.extend(wv[tokened_seq_protein[i][j]])
-        represented_protein.append(np.array(temp_sentence))    
-    return represented_protein
+        represented_protein.append(np.array(temp_sentence))  
+    return np.array(represented_protein)
     
 def read_Data(file_name):
-    seq = []
-    with open(file_name, 'r') as fp:
-        i = 0
-        for line in fp:
-            if i%2==1:
-                seq.append(line.split('\n')[0])
-            i = i+1       
+    seq = pd.read_csv(file_name, header=None).iloc[1::2, :][0].values      
     return seq   
 
 def read_proteinData(file_name):
-    seq = []
-    with open(file_name, 'r') as fp:
-        i = 0
-        for line in fp:
-            if i%2==0:
-                seq.append(line.split('\n')[0].strip('>'))
-            i = i+1       
+    seq = pd.read_csv(file_name, header=None).iloc[::2, :][0].str.replace('>','').values
     return seq   
 
 def get_dataset(wv,  maxlen,size, files, data='train'):
@@ -248,7 +208,7 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
     if path[-1] != '/':
         path += '/'
     
-    if not CROSS_VALIDATE and data != 'train':
+    if not CROSS_VALIDATE and data != 'train' and len(files) == 2:
         for f in files:
             if 'proteina' in f.lower() or 'protein_a' in f.lower():
                 file_1 = path + f
@@ -258,9 +218,9 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         seq_protein_A = read_Data(file_1)
         seq_protein_B = read_Data(file_2)
         # Sequence stats
-        seq = []
-        seq.extend(seq_protein_A)
-        seq.extend(seq_protein_B)
+        seq = np.array([])
+        seq = np.append(seq, seq_protein_A)
+        seq = np.append(seq, seq_protein_B)
         max_min_avg_length(seq)
         # token
         token_seq_protein_A = token(seq_protein_A)
@@ -269,6 +229,7 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         tokened_token_seq_protein_A = padding_J(token_seq_protein_A, maxlen)
         tokened_token_seq_protein_B = padding_J(token_seq_protein_B, maxlen)
         # protein reprsentation
+        print('Creating protein feature representations...')
         feature_protein_A  = protein_representation(wv, tokened_token_seq_protein_A, maxlen,size)
         feature_protein_B  = protein_representation(wv, tokened_token_seq_protein_B, maxlen,size)
         feature_protein_AB = np.hstack((np.array(feature_protein_A), np.array(feature_protein_B)))
@@ -280,7 +241,8 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         protein_A = read_proteinData(file_1)
         protein_B = read_proteinData(file_2)
         for p in range(0, len(protein_A)):
-            pairs.append([protein_A[p], protein_B[p]])
+            pairs.append([protein_A[p], protein_B[p]])   
+        #np.array([ np.array([protein_A[i], protein_B[i]]) for i in range(len(protein_A)) ])
         
     else:
         for f in files:
@@ -302,14 +264,14 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         neg_seq_protein_B = read_Data(file_4)
         # put pos and neg together
         pos_neg_seq_protein_A = copy.deepcopy(pos_seq_protein_A)   
-        pos_neg_seq_protein_A.extend(neg_seq_protein_A)
+        pos_neg_seq_protein_A = np.append(pos_neg_seq_protein_A, neg_seq_protein_A)
         pos_neg_seq_protein_B = copy.deepcopy(pos_seq_protein_B)   
-        pos_neg_seq_protein_B.extend(neg_seq_protein_B)
+        pos_neg_seq_protein_B = np.append(pos_neg_seq_protein_B, neg_seq_protein_B)
         
         # Sequence stats
-        seq = []
-        seq.extend(pos_neg_seq_protein_A)
-        seq.extend(pos_neg_seq_protein_B)
+        seq = np.array([])
+        seq = np.append(seq, pos_neg_seq_protein_A)
+        seq = np.append(seq, pos_neg_seq_protein_B)
         max_min_avg_length(seq)
         
         # token
@@ -319,6 +281,7 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         tokened_token_pos_neg_seq_protein_A = padding_J(token_pos_neg_seq_protein_A, maxlen)
         tokened_token_pos_neg_seq_protein_B = padding_J(token_pos_neg_seq_protein_B, maxlen)
         # protein reprsentation
+        print('Creating protein feature representations...')
         feature_protein_A  = protein_representation(wv, tokened_token_pos_neg_seq_protein_A, maxlen,size)
         feature_protein_B  = protein_representation(wv, tokened_token_pos_neg_seq_protein_B, maxlen,size)
         feature_protein_AB = np.hstack((np.array(feature_protein_A), np.array(feature_protein_B)))
@@ -334,9 +297,9 @@ def get_dataset(wv,  maxlen,size, files, data='train'):
         neg_protein_B = read_proteinData(file_4)
         # put pos and neg pairs together
         pos_neg_protein_A = copy.deepcopy(pos_protein_A)   
-        pos_neg_protein_A.extend(neg_protein_A)
+        pos_neg_protein_A = np.append(pos_neg_protein_A, neg_protein_A)
         pos_neg_protein_B = copy.deepcopy(pos_protein_B)   
-        pos_neg_protein_B.extend(neg_protein_B)
+        pos_neg_protein_B = np.append(pos_neg_protein_B, neg_protein_B)
         
         for p in range(0, len(pos_neg_protein_A)):
             pairs.append([pos_neg_protein_A[p], pos_neg_protein_B[p]])
@@ -388,7 +351,27 @@ def get_test_results(raw_data, test_indices, predictions, class_labels):
     prob_results = []
     for ppi in range(0, len(test_indices)):
         proteinA = str(raw_data[test_indices[ppi]][0])
-        proteinB= str(raw_data[test_indices[ppi]][1])
+        proteinB = str(raw_data[test_indices[ppi]][1])
+        
+        # Get index for correctly predicted class label
+        #true_interact_index = np.argmax(class_labels[test_indices[ppi]])
+        # Get indices for positive ('1') class label
+        pos_interact_index = 1
+        # Add prediction probability of interaction being positive
+        prob_pos_interaction = predictions[ppi][pos_interact_index]
+        prob_results.append([proteinA + ' ' + proteinB + ' ' + str(prob_pos_interaction)])
+        
+    return np.asarray(prob_results, dtype=str)
+
+def get_test_results2(raw_data, test_indices, predictions, class_labels):
+    # raw_data provides train+test pairs
+    # test_indices provides indices of test data for raw_data pairs
+    # predictions contains model predictions of each pair
+    # class_labels provides labels for interaction pairs (1 or 0)
+    prob_results = []
+    for ppi in range(0, len(test_indices)):
+        proteinA = str(raw_data[ppi][0])
+        proteinB = str(raw_data[ppi][1])
         
         # Get index for correctly predicted class label
         #true_interact_index = np.argmax(class_labels[test_indices[ppi]])
@@ -477,7 +460,7 @@ def getMemorystate():
             str(int(phymem.total/1024/1024))+"M") 
     return line 
 
-def res2vec(size, window, maxlen, files):
+def res2vec(size, window, maxlen, files, train_test='train'):
     if not os.path.exists(os.getcwd()+'/word2vec/'):
         os.mkdir(os.getcwd()+'/word2vec/')
     data = token(get_res2vec_data(files))   # token
@@ -485,7 +468,14 @@ def res2vec(size, window, maxlen, files):
     model = Word2Vec(data, size = size, min_count = 0, sg =1, window = window)
     print('memInfo_wv ' + getMemorystate())
     print('Word2Vec model is created')
-    sg = 'wv_' + TRAIN_PATH.split('/')[-2] + '_size_'+str(size)+'_window_'+str(window) 
+    
+    if train_test == 'train':
+        sg = 'wv_' + TRAIN_PATH.split('/')[-2] + '_size_'+str(size)+'_window_'+str(window) 
+    elif train_test == 'test':
+        sg = 'wv_' + TEST_PATH.split('/')[-2] + '_size_'+str(size)+'_window_'+str(window) 
+    else:
+        sg = 'wv_' + files[0].split('/')[-1].split('.')[0] + '_size_'+str(size)+'_window_'+str(window) 
+        
     print('Time to create Word2Vec model ('+sg+'):', time() - t_start)
     model.save('word2vec/'+sg+'.model')
     
@@ -522,13 +512,6 @@ if __name__ == "__main__":
         seq_files.append(path + train_files[f])
         
     t_start = time()
-    # load dictionary
-    if wv_path != None:
-        #model_wv = Word2Vec.load('word2vec/wv_swissProt_size_20_window_4.model')
-        model_wv = Word2Vec.load(wv_path)
-    else:
-        # make res2vec dictionary
-        model_wv = res2vec(size, window, maxlen, seq_files)
     
     sequence_len = size*maxlen
                         
@@ -543,8 +526,24 @@ if __name__ == "__main__":
             print('dataset is loaded')
             Y = to_categorical(train_label)
         else:
+            seq_files = []
+            if TRAIN_PATH[-1] != '/':
+                path = TRAIN_PATH + '/'
+            else:
+                path = TRAIN_PATH
+            for f in range(0, len(train_files)):
+                seq_files.append(path + train_files[f])
+            
+            if res2vec_model == None:
+                if word2vec_sequences == None:
+                    model_wv_train = res2vec(size, window, maxlen, seq_files, train_test='train')
+                else:
+                    model_wv_train = res2vec(size, window, maxlen, [word2vec_sequences], train_test='data')
+            else:
+                model_wv_train = Word2Vec.load(res2vec_model)
+            
             # Process training data
-            raw_pairs_train, train_fea_protein_AB, train_label = get_dataset(model_wv.wv, maxlen, size, train_files, data='train')
+            raw_pairs_train, train_fea_protein_AB, train_label = get_dataset(model_wv_train.wv, maxlen, size, train_files, data='train')
             Y_train = to_categorical(train_label)
             if args.saveModel:
                 h5_file = h5py.File(os.getcwd() + '/Models/' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_DEEPFE_train_data.h5','w')
@@ -552,38 +551,41 @@ if __name__ == "__main__":
                 h5_file.create_dataset('trainset_y', data = train_label)
                 h5_file.create_dataset('raw_pairs_train', data = raw_pairs_train)
                 h5_file.close()
-        # Process testing data
-        raw_pairs_test, test_fea_protein_AB, test_label = get_dataset(model_wv.wv, maxlen, size, test_files, data='test')
-        Y_test = to_categorical(test_label)
-        # Combine to common variable, but keep train/test split
-        raw_pairs = raw_pairs_train + raw_pairs_test
-        fea_protein_AB = np.vstack((train_fea_protein_AB, test_fea_protein_AB))
-        scaler = StandardScaler().fit(fea_protein_AB)
-        fea_protein_AB = scaler.transform(fea_protein_AB)
-        Y = np.concatenate((Y_train, Y_test))
-        train_test = get_traintest_split(Y, Y_train.shape[0])
-    else:
-        raw_pairs, fea_protein_AB, train_label = get_dataset(model_wv.wv, maxlen, size, train_files, data='train')  
-        #scaler
-        scaler = StandardScaler().fit(fea_protein_AB)
-        scaled_fea_protein_AB = scaler.transform(fea_protein_AB)
-        Y = to_categorical(train_label)
-        train_test = get_crossvalidation_splits(scaled_fea_protein_AB, Y, nsplits=K_FOLDS)
-    
-    scores = []
-    scores_array = []
-    i = 0
-    for (train_index, test_index) in train_test:
         
+        seq_files = []
+        if TEST_PATH[-1] != '/':
+            path = TEST_PATH + '/'
+        else:
+            path = TEST_PATH
+        for f in range(0, len(test_files)):
+            seq_files.append(path + test_files[f])
+        
+        if res2vec_model == None:
+            if word2vec_sequences == None:
+                model_wv_test = res2vec(size, window, maxlen, seq_files, train_test='test')
+            else:
+                model_wc_test = res2vec(size, window, maxlen, [word2vec_sequences], train_test='data')
+        else:
+            model_wv_test = Word2Vec.load(res2vec_model)
+                
+        # Process testing data
+        raw_pairs_test, test_fea_protein_AB, test_label = get_dataset(model_wv_test.wv, maxlen, size, test_files, data='test')
+        Y_test = to_categorical(test_label)
+
+        scores = []
+        scores_array = []
+        i = 0
+        #for (train_index, test_index) in train_test:
+            
         # Get features
-        X_train_left = np.array(fea_protein_AB[train_index][:,0:sequence_len])
-        X_train_right = np.array(fea_protein_AB[train_index][:,sequence_len:sequence_len*2])
-        X_test_left = np.array(fea_protein_AB[test_index][:,0:sequence_len])
-        X_test_right = np.array(fea_protein_AB[test_index][:,sequence_len:sequence_len*2])
+        X_train_left = np.array(train_fea_protein_AB[:,0:sequence_len])
+        X_train_right = np.array(train_fea_protein_AB[:,sequence_len:sequence_len*2])
+        X_test_left = np.array(test_fea_protein_AB[:,0:sequence_len])
+        X_test_right = np.array(test_fea_protein_AB[:,sequence_len:sequence_len*2])
 
         # Get labels
-        y_train = Y[train_index]
-        y_test = Y[test_index]
+        y_train = Y_train
+        y_test = Y_test
         
         if pretrained == None:
             # Build model
@@ -608,11 +610,11 @@ if __name__ == "__main__":
         # Save predictions to separate file
         if not CROSS_VALIDATE:
             # Save interaction probability results
-            prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
+            prob_results = get_test_results2(raw_pairs_test, raw_pairs_test, predictions, Y_test)
             np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
         else:
             # Save interaction probability results
-            prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
+            prob_results = get_test_results(raw_pairs_test, raw_pairs_test.index, predictions, Y_test)
             np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
         
         try:
@@ -648,23 +650,140 @@ if __name__ == "__main__":
             print("Check for predictions file in Results/ directory...")
         
         print('\n', time() - t_start, 'seconds to complete')
-
-    with open(rst_file,'w') as f:
-        f.write('accuracy=%.4f (+/- %.4f)' % (np.mean(scores_array, axis=0)[0],np.std(scores_array, axis=0)[0]))
-        f.write('\n')
-        f.write("precision=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[1],np.std(scores_array, axis=0)[1]))
-        f.write('\n')
-        f.write("recall=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[2],np.std(scores_array, axis=0)[2]))
-        f.write('\n')
-        f.write("specificity=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[3],np.std(scores_array, axis=0)[3]))
-        f.write('\n')
-        f.write("f1_score=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[5],np.std(scores_array, axis=0)[5]))
-        f.write('\n')
-        f.write("MCC=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[4],np.std(scores_array, axis=0)[4]))
-        f.write('\n')
-        f.write("roc_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[6],np.std(scores_array, axis=0)[6]))
-        f.write('\n')
-        f.write("pr_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[7],np.std(scores_array, axis=0)[7]))
-        f.write('\n')
-        f.write('time=%.2f'%(time()-t_start))
-        f.write('\n')
+    
+        with open(rst_file,'w') as f:
+            f.write('accuracy=%.4f (+/- %.4f)' % (np.mean(scores_array, axis=0)[0],np.std(scores_array, axis=0)[0]))
+            f.write('\n')
+            f.write("precision=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[1],np.std(scores_array, axis=0)[1]))
+            f.write('\n')
+            f.write("recall=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[2],np.std(scores_array, axis=0)[2]))
+            f.write('\n')
+            f.write("specificity=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[3],np.std(scores_array, axis=0)[3]))
+            f.write('\n')
+            f.write("f1_score=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[5],np.std(scores_array, axis=0)[5]))
+            f.write('\n')
+            f.write("MCC=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[4],np.std(scores_array, axis=0)[4]))
+            f.write('\n')
+            f.write("roc_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[6],np.std(scores_array, axis=0)[6]))
+            f.write('\n')
+            f.write("pr_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[7],np.std(scores_array, axis=0)[7]))
+            f.write('\n')
+            f.write('time=%.2f'%(time()-t_start))
+            f.write('\n')
+        
+    else:
+        # load dictionary
+        if res2vec_model != None:
+            model_wv = Word2Vec.load(res2vec_model)
+        else:
+            # make res2vec dictionary
+            if word2vec_sequences == None:
+                model_wv = res2vec(size, window, maxlen, seq_files, train_test='train')
+            else:
+                model_wv = res2vec(size, window, maxlen, [word2vec_sequences], train_test='data')
+            
+        raw_pairs, fea_protein_AB, train_label = get_dataset(model_wv.wv, maxlen, size, train_files, data='train')  
+        #scaler
+        scaler = StandardScaler().fit(fea_protein_AB)
+        scaled_fea_protein_AB = scaler.transform(fea_protein_AB)
+        Y = to_categorical(train_label)
+        train_test = get_crossvalidation_splits(scaled_fea_protein_AB, Y, nsplits=K_FOLDS)
+    
+        scores = []
+        scores_array = []
+        i = 0
+        for (train_index, test_index) in train_test:
+            
+            # Get features
+            X_train_left = np.array(fea_protein_AB[train_index][:,0:sequence_len])
+            X_train_right = np.array(fea_protein_AB[train_index][:,sequence_len:sequence_len*2])
+            X_test_left = np.array(fea_protein_AB[test_index][:,0:sequence_len])
+            X_test_right = np.array(fea_protein_AB[test_index][:,sequence_len:sequence_len*2])
+    
+            # Get labels
+            y_train = Y[train_index]
+            y_test = Y[test_index]
+            
+            if pretrained == None:
+                # Build model
+                model =  merged_DBN(sequence_len)  
+                sgd = SGD(lr=0.01, momentum=0.9, decay=0.001)
+                model.compile(loss='categorical_crossentropy', optimizer=sgd,metrics=['precision'])
+                # feed data into model
+                hist = model.fit([X_train_left, X_train_right], y_train,
+                                 batch_size = batch_size,
+                                 nb_epoch = n_epochs,
+                                 verbose = 1)
+            else:
+                print('Loading model:', pretrained)
+                model = load_model(pretrained)
+                
+            if not CROSS_VALIDATE and args.saveModel:
+                model.save(os.getcwd() + '/Models/' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_DEEPFE.model')
+            
+            # Make predictions
+            predictions = model.predict([X_test_left, X_test_right]) 
+            
+            # Save predictions to separate file
+            if not CROSS_VALIDATE:
+                # Save interaction probability results
+                prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
+                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
+            else:
+                # Save interaction probability results
+                prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
+                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
+            
+            try:
+                auc_roc_test = roc_auc_score(y_test[:,1], predictions[:,1])
+                auc_pr_test = average_precision_score(y_test[:,1], predictions[:,1])
+                
+                label_predict_test = categorical_probas_to_classes(predictions)  
+                tp_test,fp_test,tn_test,fn_test,accuracy_test, precision_test, sensitivity_test,recall_test, specificity_test, MCC_test, f1_score_test,_,_,_= calculate_performace(len(label_predict_test), label_predict_test, y_test[:,1])
+                print(' ===========  fold: ' + str(i))
+                i=i+1
+                K.clear_session()
+                tf.reset_default_graph()
+                print('\ttp=%0.0f,fp=%0.0f,tn=%0.0f,fn=%0.0f'%(tp_test,fp_test,tn_test,fn_test))
+                print('\tacc=%0.4f,pre=%0.4f,rec=%0.4f,sp=%0.4f,f1=%0.4f,mcc=%0.4f'
+                      % (accuracy_test, precision_test, recall_test, specificity_test, f1_score_test, MCC_test))
+                print('\tauc_roc=%0.4f,auc_pr=%0.4f'%(auc_roc_test, auc_pr_test))
+                scores.append([accuracy_test, precision_test, recall_test, specificity_test, MCC_test, f1_score_test, auc_roc_test, auc_pr_test]) 
+                
+                sc= pd.DataFrame(scores)   
+                #sc.to_csv(result_dir+swm+be+'.csv')   
+                scores_array = np.array(scores)
+                print(("\naccuracy=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[0],np.std(scores_array, axis=0)[0])))
+                print(("precision=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[1],np.std(scores_array, axis=0)[1])))
+                print("recall=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[2],np.std(scores_array, axis=0)[2]))
+                print("specificity=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[3],np.std(scores_array, axis=0)[3]))
+                print("f1_score=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[5],np.std(scores_array, axis=0)[5]))
+                print("MCC=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[4],np.std(scores_array, axis=0)[4]))
+                print("roc_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[6],np.std(scores_array, axis=0)[6]))
+                print("pr_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[7],np.std(scores_array, axis=0)[7]))
+            except ValueError as e:
+                print("Unable to calculate performance for given test data.")
+                print(e)
+                print("Check for predictions file in Results/ directory...")
+            
+            print('\n', time() - t_start, 'seconds to complete')
+    
+        with open(rst_file,'w') as f:
+            f.write('accuracy=%.4f (+/- %.4f)' % (np.mean(scores_array, axis=0)[0],np.std(scores_array, axis=0)[0]))
+            f.write('\n')
+            f.write("precision=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[1],np.std(scores_array, axis=0)[1]))
+            f.write('\n')
+            f.write("recall=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[2],np.std(scores_array, axis=0)[2]))
+            f.write('\n')
+            f.write("specificity=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[3],np.std(scores_array, axis=0)[3]))
+            f.write('\n')
+            f.write("f1_score=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[5],np.std(scores_array, axis=0)[5]))
+            f.write('\n')
+            f.write("MCC=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[4],np.std(scores_array, axis=0)[4]))
+            f.write('\n')
+            f.write("roc_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[6],np.std(scores_array, axis=0)[6]))
+            f.write('\n')
+            f.write("pr_auc=%.4f (+/- %.4f)" % (np.mean(scores_array, axis=0)[7],np.std(scores_array, axis=0)[7]))
+            f.write('\n')
+            f.write('time=%.2f'%(time()-t_start))
+            f.write('\n')
