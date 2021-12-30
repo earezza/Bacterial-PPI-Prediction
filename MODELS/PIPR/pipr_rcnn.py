@@ -18,7 +18,7 @@
     Main modifications include a change of command-line argument usage for execution and a choice of cross-validation 
     or a single train/test split. Prediction probabilities of each interaction in test data are also saved to file.
     Author: Eric Arezza
-    Last Updated: March 9, 2021
+    Last Updated: December 29, 2021
     
     Description:
         RCNN approach to binary classification of protein-protein interaction prediction.
@@ -56,56 +56,33 @@ if 'embeddings' not in sys.path:
 # Description of command-line usage
 describe_help = 'CUDA_VISIBLE_DEVICES=0 python pipr_rcnn.py sequencesFile.fasta trainFile.tsv testFile.tsv'
 parser = argparse.ArgumentParser(description=describe_help)
-parser.add_argument('sequences', help='Path to file containing protein sequences (.fasta)', type=str, nargs=1)
-parser.add_argument('train', help='Path to file containing binary protein interactions for training (.tsv)', type=str, nargs=1)
-parser.add_argument('test', help='Path to file containing binary protein interactions for testing (.tsv)', type=str, nargs=1)
-parser.add_argument('-r','--results', help='Path to file to store results', type=str, nargs=1, required=False)
-parser.add_argument('-l', '--label_index', help='Label index (int)', type=int, nargs=1, required=False)
+parser.add_argument('sequences', help='Path to file containing protein sequences (.fasta)', type=str)
+parser.add_argument('train', help='Path to file containing binary protein interactions for training (.tsv)', type=str)
+parser.add_argument('test', help='Path to file containing binary protein interactions for testing (.tsv)', type=str)
+parser.add_argument('-r','--results', help='Path to file to store results', type=str)
+parser.add_argument('-l', '--label_index', help='Label index (int)', type=int, default=2)
 parser.add_argument('-m', '--mbedding', help='Embedding (int), 0=embeddings/default_onehot.txt, 1=embeddings/string_vec5.txt, 2=embeddings/CTCoding_onehot.txt, 3=embeddings/vec7_CTC.txt', 
-                    type=int, nargs=1, required=False, choices=[0,1,2,3])
-parser.add_argument('-d', '--dimensions', help='Hidden dimensions (int)', type=int, nargs=1, required=False)
-parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, nargs=1, required=False)
-parser.add_argument('-a', '--seq_size', help='Amino acids/sequence length (int)', type=int, nargs=1, required=False)
+                    type=int, choices=[0,1,2,3], default=3)
+parser.add_argument('-d', '--dimensions', help='Hidden dimensions (int)', type=int, default=50)
+parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, default=100)
+parser.add_argument('-a', '--seq_size', help='Amino acids/sequence length (int)', type=int, default=2000)
 parser.add_argument('-save', '--saveModel', help='Save model', action='store_true', default=False)
-parser.add_argument('-load','--loadModel', help='Path to pre-trained model', default='', type=str, nargs=1, required=False)
+parser.add_argument('-load','--loadModel', help='Path to pre-trained model', default='', type=str)
 parser.add_argument('-c', '--cpu', dest='cpu', help='Use only CPU', action='store_true', default=False)
-parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, nargs=1, required=False)
-#parser.set_defaults(results=os.getcwd()+'/results/'+datetime.now().strftime("%d-%m-%Y/")+datetime.now().strftime("%H-%M-%S-results.txt"),
-#                    label_index=2, mbedding=0, dimensions=25, epochs=50)
+parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, default=5)
 args = parser.parse_args()
+
 # Set defaults for command-line arguments
-if args.label_index is None:
-    label_index = 2
-else:
-    label_index = args.label_index[0]
-if args.mbedding is None:
-    use_emb = 3
-else:
-    use_emb = args.mbedding[0]
-if args.dimensions is None:
-    hidden_dim = 50
-else:
-    hidden_dim = args.dimensions[0]
-if args.epochs is None:
-    n_epochs = 100
-else:
-    n_epochs = args.epochs[0]
-if args.seq_size is None:
-    SEQ_SIZE = 2000
-else:
-    SEQ_SIZE = args.seq_size[0]
-if args.loadModel == '':
-    pretrained = None
-else:
-    pretrained = args.loadModel[0]
-if args.k_folds is None:
-    K_FOLDS = 5
-else:
-    K_FOLDS = args.k_folds[0]
+label_index = args.label_index
+use_emb = args.mbedding
+hidden_dim = args.dimensions
+n_epochs = args.epochs
+SEQ_SIZE = args.seq_size
+pretrained = args.loadModel
+K_FOLDS = args.k_folds
 
-
-TRAIN_FILE = args.train[0]
-TEST_FILE = args.test[0]
+TRAIN_FILE = args.train
+TEST_FILE = args.test
 CROSS_VALIDATE = False
 if TRAIN_FILE == TEST_FILE:
     CROSS_VALIDATE = True
@@ -116,7 +93,7 @@ if args.results is None:
 else:
     rst_file = args.results
 
-ID2SEQ_FILE = args.sequences[0]
+ID2SEQ_FILE = args.sequences
 
 EMB_FILES = ['embeddings/default_onehot.txt', 'embeddings/string_vec5.txt', 'embeddings/CTCoding_onehot.txt', 'embeddings/vec7_CTC.txt']
 SEQ2T = s2t(EMB_FILES[use_emb])
