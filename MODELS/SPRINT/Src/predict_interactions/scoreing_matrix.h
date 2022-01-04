@@ -147,12 +147,12 @@ void SCORING_MATRIX :: load_test(string pos_file_name, char flag){
 			temp_p1id = p_name_id.at(temp1);
 			temp_p2id = p_name_id.at(temp2);
 			if(flag == 'p'){
-				fout<<final_score_matrix[temp_p1id][temp_p2id]<<" 1\n";
-				fout_pos<<final_score_matrix[temp_p1id][temp_p2id]<<" 1\n";
+				fout<<p_id_name.at(temp_p1id)<<" "<<p_id_name.at(temp_p2id)<<" "<<final_score_matrix[temp_p1id][temp_p2id]<<" 1\n";
+				fout_pos<<p_id_name.at(temp_p1id)<<" "<<p_id_name.at(temp_p2id)<<" "<<final_score_matrix[temp_p1id][temp_p2id]<<" 1\n";
 			}
 			else{
-				fout<<final_score_matrix[temp_p1id][temp_p2id]<<" 0\n";
-				fout_neg<<final_score_matrix[temp_p1id][temp_p2id]<<" 0\n";
+				fout<<p_id_name.at(temp_p1id)<<" "<<p_id_name.at(temp_p2id)<<" "<<final_score_matrix[temp_p1id][temp_p2id]<<" 0\n";
+				fout_neg<<p_id_name.at(temp_p1id)<<" "<<p_id_name.at(temp_p2id)<<" "<<final_score_matrix[temp_p1id][temp_p2id]<<" 0\n";
 			}
 		}
 	}
