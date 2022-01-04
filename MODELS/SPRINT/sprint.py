@@ -90,7 +90,7 @@ def recalculate_precision(df, precision, thresholds, ratio=IMBALANCE):
     delta = 2*ratio - 1
     new_precision = precision.copy()
     for t in range(0, len(thresholds)):
-        tn, fp, fn, tp = metrics.confusion_matrix(df[1], (df[0] >= thresholds[t]).astype(int)).ravel()
+        tn, fp, fn, tp = metrics.confusion_matrix(df[df.columns[-1]], (df[df.columns[2]] >= thresholds[t]).astype(int)).ravel()
         tp = tp*(1 + delta)
         fp = fp*(1 - delta)
         new_precision[t] = tp/(tp+fp)
@@ -234,6 +234,14 @@ if __name__ == '__main__':
             pos_test.to_csv(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt', sep=' ', columns=[0,1], header=None, index=False)
             neg_test.to_csv(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt', sep=' ', columns=[0,1], header=None, index=False)
             
+            # Remove any files of same name to allow proper overwrite instead of appending
+            if os.path.exists(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold)):
+                os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold))
+            if os.path.exists(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.pos'%str(fold)):
+                os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.pos'%str(fold))
+            if os.path.exists(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.neg'%str(fold)):
+                os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.neg'%str(fold))
+            
             # Run predict interactions for k-fold
             predict_interactions(args.sprint, args.protein_sequences, args.hsp_file, thc=args.hc_threshold, 
                              train_pos=RESULTS_DIR + output + '_pos_train_fold-' + str(fold) + '.txt', 
@@ -252,26 +260,19 @@ if __name__ == '__main__':
             os.remove(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt')
             os.remove(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt')
             
-            ppi = test.copy()
-            ppi.reset_index(drop=True, inplace=True)
-            scores = df_pred.copy()
-            scores.reset_index(drop=True, inplace=True)
-            ppi.insert(2, 'Score', scores[0])
-            ppi.to_csv(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), sep=' ', columns=ppi.columns[:3], header=None, index=False)
-            # Remove redundant files from sprint
+            # Remove redundant files
             os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.pos'%str(fold))
             os.remove(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt.neg'%str(fold))
             
-            
             # Evaluate k-fold performance and adjust for hypothetical imbalance
-            precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
+            precision, recall, thresholds = metrics.precision_recall_curve(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             precision = recalculate_precision(df_pred, precision, thresholds)
-            fpr, tpr, __ = metrics.roc_curve(df_pred[1], df_pred[0])
+            fpr, tpr, __ = metrics.roc_curve(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             if IMBALANCE == 0.5:
-                pr_auc = metrics.average_precision_score(df_pred[1], df_pred[0])
+                pr_auc = metrics.average_precision_score(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             else:
                 pr_auc = metrics.auc(recall, precision)
-            roc_auc = metrics.roc_auc_score(df_pred[1], df_pred[0])
+            roc_auc = metrics.roc_auc_score(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             print('auc_roc=', roc_auc, '\nauc_pr=', pr_auc)
             
             # Add k-fold performance for overall average performance
@@ -285,14 +286,14 @@ if __name__ == '__main__':
             fold += 1
         
         # Get overall performance across all folds
-        precision, recall, thresholds = metrics.precision_recall_curve(df_pred_all[1], df_pred_all[0])
+        precision, recall, thresholds = metrics.precision_recall_curve(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         precision = recalculate_precision(df_pred_all, precision, thresholds)
-        fpr, tpr, __ = metrics.roc_curve(df_pred_all[1], df_pred_all[0])
+        fpr, tpr, __ = metrics.roc_curve(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         if IMBALANCE == 0.5:
-            pr_auc = metrics.average_precision_score(df_pred_all[1], df_pred_all[0])
+            pr_auc = metrics.average_precision_score(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         else:
             pr_auc = metrics.auc(recall, precision)
-        roc_auc = metrics.roc_auc_score(df_pred_all[1], df_pred_all[0])
+        roc_auc = metrics.roc_auc_score(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         
         # Write results to text file
         with open(RESULTS_DIR + output + '_results.txt', 'w') as f:
