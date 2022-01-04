@@ -252,11 +252,12 @@ if __name__ == '__main__':
             
             # Read predictions for k-fold
             df_pred = pd.read_csv(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), delim_whitespace=True, header=None)
+            df_pred.to_csv(RESULTS_DIR + 'predictions_' + output + '_fold-%s.txt'%str(fold), sep=' ', columns=[0,1,2], header=None, index=False)
             df_pred_all = df_pred_all.append(df_pred)
             
             # Format results
             tested = pos_test.append(neg_test, ignore_index=True)
-            tested.to_csv(RESULTS_DIR + output + '_test_fold-' + str(fold) + '.tsv', sep='\t', header=None, index=False)
+            tested.to_csv(RESULTS_DIR + output + '_test_fold-' + str(fold) + '.txt', sep=' ', header=None, index=False)
             os.remove(RESULTS_DIR + output + '_pos_test_fold-' + str(fold) + '.txt')
             os.remove(RESULTS_DIR + output + '_neg_test_fold-' + str(fold) + '.txt')
             
