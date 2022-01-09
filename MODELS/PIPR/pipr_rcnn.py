@@ -59,7 +59,7 @@ parser = argparse.ArgumentParser(description=describe_help)
 parser.add_argument('sequences', help='Path to file containing protein sequences (.fasta)', type=str)
 parser.add_argument('train', help='Path to file containing binary protein interactions for training (.tsv)', type=str)
 parser.add_argument('test', help='Path to file containing binary protein interactions for testing (.tsv)', type=str)
-parser.add_argument('-r','--results', help='Path to file to store results', type=str)
+parser.add_argument('-r','--results', help='Optional name to store resulting files', type=str)
 parser.add_argument('-l', '--label_index', help='Label index (int)', type=int, default=2)
 parser.add_argument('-m', '--mbedding', help='Embedding (int), 0=embeddings/default_onehot.txt, 1=embeddings/string_vec5.txt, 2=embeddings/CTCoding_onehot.txt, 3=embeddings/vec7_CTC.txt', 
                     type=int, choices=[0,1,2,3], default=3)
@@ -67,7 +67,7 @@ parser.add_argument('-d', '--dimensions', help='Hidden dimensions (int)', type=i
 parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, default=100)
 parser.add_argument('-a', '--seq_size', help='Amino acids/sequence length (int)', type=int, default=2000)
 parser.add_argument('-save', '--saveModel', help='Save model', action='store_true', default=False)
-parser.add_argument('-load','--loadModel', help='Path to pre-trained model', default='', type=str)
+parser.add_argument('-load','--loadModel', help='Path to pre-trained model', type=str)
 parser.add_argument('-c', '--cpu', dest='cpu', help='Use only CPU', action='store_true', default=False)
 parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, default=5)
 args = parser.parse_args()
@@ -91,7 +91,7 @@ if args.results is None:
     #rst_file = os.getcwd()+'/Results/results_'+datetime.now().strftime("%d-%m-%Y_")+datetime.now().strftime("%H-%M-%S.txt")    
     rst_file = os.getcwd()+'/Results/results_' + TRAIN_FILE.split('/')[-1].replace('.tsv', '_') + TEST_FILE.split('/')[-1].replace('.tsv', '.txt')
 else:
-    rst_file = args.results
+    rst_file = os.getcwd()+'/Results/results_' + args.results
 
 ID2SEQ_FILE = args.sequences
 
@@ -382,12 +382,17 @@ if __name__ == "__main__":
         if not CROSS_VALIDATE:
             # Save interaction probability results
             prob_results = get_test_results(id2_aid_test, raw_data, test, class_labels, pred)
-            np.savetxt(os.getcwd()+'/Results/predictions_' + TRAIN_FILE.split('/')[-1].replace('.tsv', '_') + TEST_FILE.split('/')[-1].replace('.tsv', '.txt'), prob_results, fmt='%s', delimiter='\n')
+            if args.results is None:
+                np.savetxt(os.getcwd()+'/Results/predictions_' + TRAIN_FILE.split('/')[-1].replace('.tsv', '_') + TEST_FILE.split('/')[-1].replace('.tsv', '.txt'), prob_results, fmt='%s', delimiter='\n')
+            else:
+                np.savetxt(rst_file.replace('results', 'predictions'), prob_results, fmt='%s', delimiter='\n')
         else:
             # Save interaction probability results
             prob_results = get_test_results(id2_aid, raw_data, test, class_labels, pred)
-            np.savetxt(os.getcwd()+'/Results/predictions_' + TRAIN_FILE.split('/')[-1].replace('.tsv', '_') + TEST_FILE.split('/')[-1].replace('.tsv', '_') + 'fold-' + str(cv) + '.txt', prob_results, fmt='%s', delimiter='\n')
-        
+            if args.results is None:
+                np.savetxt(os.getcwd()+'/Results/predictions_' + TRAIN_FILE.split('/')[-1].replace('.tsv', '_') + TEST_FILE.split('/')[-1].replace('.tsv', '_') + 'fold-' + str(cv) + '.txt', prob_results, fmt='%s', delimiter='\n')
+            else:
+                np.savetxt(rst_file.replace('results', 'predictions').split('.')[0] + '_fold-' + str(cv) + '.txt', prob_results, fmt='%s', delimiter='\n')
         try:
             for i in range(len(class_labels[test])):        
                 num_total += 1
