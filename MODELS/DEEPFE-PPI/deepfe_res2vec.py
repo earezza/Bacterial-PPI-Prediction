@@ -78,7 +78,7 @@ parser.add_argument('-w', '--window', help='Window size for Skip-gram context pa
 parser.add_argument('-l', '--max_length', help='Max length of proteins for deep learning (int)', type=int, default=850)
 parser.add_argument('-b', '--batch_size', help='Batch size (int)', type=int, default=256)
 parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, default=50)
-parser.add_argument('-r','--results', help='Path to file to store results', type=str)
+parser.add_argument('-r','--results', help='Optional name to store resulting files', type=str)
 parser.add_argument('-save', '--saveModel', help='Save DeepFE model', action='store_true', default=False)
 parser.add_argument('-load','--loadModel', help='Path to pre-trained DeepFE model', type=str)
 parser.add_argument('-k', '--k_folds', help='Number of k-folds when cross-validating (int)', type=int, default=5)
@@ -103,7 +103,7 @@ if TRAIN_PATH == TEST_PATH:
 if args.results == None:
     rst_file = os.getcwd()+'/Results/results_' + TRAIN_PATH.split('/')[-2] + '_' + TEST_PATH.split('/')[-2] + '.txt'
 else:
-    rst_file = args.results
+    rst_file = os.getcwd()+'/Results/results_' + args.results
 
 print(args)
 print("\n---Using the following---\nTraining Files: {}\nTesting Files: {}".format(TRAIN_PATH, TEST_PATH))
@@ -575,7 +575,6 @@ if __name__ == "__main__":
         scores = []
         scores_array = []
         i = 0
-        #for (train_index, test_index) in train_test:
             
         # Get features
         X_train_left = np.array(train_fea_protein_AB[:,0:sequence_len])
@@ -611,12 +610,17 @@ if __name__ == "__main__":
         if not CROSS_VALIDATE:
             # Save interaction probability results
             prob_results = get_test_results2(raw_pairs_test, raw_pairs_test, predictions, Y_test)
-            np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
+            if args.results == None:
+                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
+            else:
+                np.savetxt(rst_file.replace('results', 'predictions'), prob_results, fmt='%s', delimiter='\n')
         else:
             # Save interaction probability results
             prob_results = get_test_results(raw_pairs_test, raw_pairs_test.index, predictions, Y_test)
-            np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
-        
+            if args.results == None:
+                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
+            else:
+                np.savetxt(rst_file.replace('results', 'predictions').split('.')[0] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
         try:
             auc_roc_test = roc_auc_score(y_test[:,1], predictions[:,1])
             auc_pr_test = average_precision_score(y_test[:,1], predictions[:,1])
@@ -728,12 +732,17 @@ if __name__ == "__main__":
             if not CROSS_VALIDATE:
                 # Save interaction probability results
                 prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
-                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
+                if args.results == None:
+                    np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '.txt', prob_results, fmt='%s', delimiter='\n')
+                else:
+                    np.savetxt(rst_file.replace('results', 'predictions'), prob_results, fmt='%s', delimiter='\n')
             else:
                 # Save interaction probability results
                 prob_results = get_test_results(raw_pairs, test_index, predictions, Y)
-                np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
-            
+                if args.results == None:
+                    np.savetxt('Results/predictions_' + os.path.split(TRAIN_PATH)[0].split('/')[-1] + '_' + os.path.split(TEST_PATH)[0].split('/')[-1] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
+                else:
+                    np.savetxt(rst_file.replace('results', 'predictions').split('.')[0] + '_fold-' + str(i) + '.txt', prob_results, fmt='%s', delimiter='\n')
             try:
                 auc_roc_test = roc_auc_score(y_test[:,1], predictions[:,1])
                 auc_pr_test = average_precision_score(y_test[:,1], predictions[:,1])
