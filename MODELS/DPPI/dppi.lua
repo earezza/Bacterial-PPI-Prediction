@@ -264,7 +264,7 @@ end
 function prep_cv_data( file, k )
 
   --load pairs
-  local prot_pairs = torch.load( 'Data/'..file..k..'_labels.dat' )
+  local prot_pairs = torch.load( 'Data/'..file..(k-1)..'_labels.dat' )
   --isolate only unique proteins found in pairs
   local proteins = {}
   for p=1, #prot_pairs do
@@ -334,8 +334,8 @@ function prep_cv_data( file, k )
 
   proteinFile:close()
   collectgarbage()
-  torch.save('Data/'..file..k..'_profile_crop_'..crop_size..'.t7', ppFeature )
-  torch.save('Data/'..file..k..'_number_crop_'..crop_size..'.t7', pNumber )
+  torch.save('Data/'..file..(k-1)..'_profile_crop_'..crop_size..'.t7', ppFeature )
+  torch.save('Data/'..file..(k-1)..'_number_crop_'..crop_size..'.t7', pNumber )
 
   return pNumber, ppFeature
 end
@@ -409,20 +409,89 @@ function pair_seq_load_batch( Data, index, feature )
 end
 
 function get_kfold_split( Data , k )
---need to make stratified
-  local train = {}
-  local test = {}
+  --get positives and negatives
+  local pos = {}
+  local neg = {}
+  for i=1, #Data do
+    if (Data[i][3] == '1') then
+      pos[i] = Data[i]
+    elseif (Data[i][3] == '0') then
+      neg[i - #pos] = Data[i]
+    end
+  end
+  --shuffle to randomize data in each class for this run
+  local shuffle_pos = torch.randperm(#pos)
+  local shuffle_neg = torch.randperm(#neg)
+  --get sizes and indices of subsets
+  local train_k_pos = {}
+  local test_k_pos = {}
+  local train_k_neg = {}
+  local test_k_neg = {}
+  local ind_pos = torch.Tensor(shuffle_pos)
+  local ind_neg = torch.Tensor(shuffle_neg)
+  local train_ind_pos
+  local train_ind_neg
+  local test_ind_pos
+  local test_ind_neg
+  --split data indices into k-fold subsets
+  for i=1, k do
+    if i%2 == 0 then
+      train_ind_pos = torch.split(ind_pos, math.floor(ind_pos:size()[1]*(1.0 - (1.0/k))))[1]
+      train_ind_neg = torch.split(ind_neg, math.floor(ind_neg:size()[1]*(1.0 - (1.0/k)) + 0.5))[1]
+      test_ind_pos = torch.split(ind_pos, math.floor(ind_pos:size()[1]*(1.0 - (1.0/k))))[2]
+      test_ind_neg = torch.split(ind_neg, math.floor(ind_neg:size()[1]*(1.0 - (1.0/k)) + 0.5))[2]
+    else
+      train_ind_pos = torch.split(ind_pos, math.floor(ind_pos:size()[1]*(1.0 - (1.0/k)) + 0.5))[1]
+      train_ind_neg = torch.split(ind_neg, math.floor(ind_neg:size()[1]*(1.0 - (1.0/k))))[1]
+      test_ind_pos = torch.split(ind_pos, math.floor(ind_pos:size()[1]*(1.0 - (1.0/k)) + 0.5))[2]
+      test_ind_neg = torch.split(ind_neg, math.floor(ind_neg:size()[1]*(1.0 - (1.0/k))))[2]
+    end
+    train_k_pos[i] = train_ind_pos
+    train_k_neg[i] = train_ind_neg
+    test_k_pos[i] = test_ind_pos
+    test_k_neg[i] = test_ind_neg
+    ind_pos = torch.cat(test_ind_pos, train_ind_pos)
+    ind_neg = torch.cat(test_ind_neg, train_ind_neg)
+  end
+  --Map PPIs to indices for each subset
+  train = {}
+  test = {}
   for i=1, k do
     train[i] = {}
     test[i] = {}
-    local shuffle = torch.randperm(#Data)
-    local train_size = math.floor(shuffle:size()[1]*(1.0 - (1.0/k)) + 0.5)
-    local test_size = math.floor(shuffle:size()[1]*(1.0/k) + 0.5)
-    for j=1, train_size do
-      train[i][j] = Data[ shuffle[j] ]
+    local train_pos = {}
+    local train_neg = {}
+    local test_pos = {}
+    local test_neg = {}
+    --add positives test
+    for j=1, test_k_pos[i]:size()[1] do
+      test_pos[j] = pos[shuffle_pos[test_k_pos[i][j]]]
     end
-    for j=train_size+1, #Data  do
-      test[i][j-train_size] = Data[ shuffle[j] ]
+    --add negatives test
+    for j=1, test_k_neg[i]:size()[1] do
+      test_neg[j] = neg[shuffle_neg[test_k_neg[i][j]]]
+    end
+    --combine
+    for n=1, #test_pos do
+      test[i][#test[i]+1] = test_pos[n]
+    end
+    for n=1, #test_neg do
+      test[i][#test[i]+1] = test_neg[n]
+    end
+    --add positives train
+    for j=1, train_k_pos[i]:size()[1] do
+      train_pos[j] = pos[shuffle_pos[train_k_pos[i][j]]]
+    end
+    --add negatives train
+    for j=1, train_k_neg[i]:size()[1] do
+      train_neg[j] = neg[shuffle_neg[train_k_neg[i][j]]]
+    end
+    --combine
+    for n=1, #train_pos do
+      train[i][#train[i]+1] = train_pos[n]
+    end
+    for n=1, #train_neg do
+      train[i][#train[i]+1] = train_neg[n]
     end
   end
   return train, test
@@ -637,7 +706,7 @@ function recalculate_crop( v_score, v_labels, Data, k )
     predictions[i] = Data.org_data[i][1]..'\t'..Data.org_data[i][2]..'\t'..tonumber(string.format("%.6f", myscore1))
   end
   
-  pfile = io.open('Results/prediction'..saveName..'_fold-'..k..'.txt', 'w')
+  pfile = io.open('Results/prediction'..saveName..'_fold-'..(k-1)..'.txt', 'w')
   for p=1, #predictions do
       pfile:write(predictions[p]..'\n')
   end
@@ -812,12 +881,12 @@ end
 function cv_files_exist( file, k_fold )
   all_found = 0
   for k=1, k_fold do
-    if file_exists(file..'_train_fold-'..k..'_labels.dat') == true then all_found = all_found + 1 end
-    if file_exists(file..'_test_fold-'..k..'_labels.dat') == true then all_found = all_found + 1 end
-    if file_exists(file..'_train_fold-'..k..'_profile_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
-    if file_exists(file..'_test_fold-'..k..'_profile_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
-    if file_exists(file..'_train_fold-'..k..'_number_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
-    if file_exists(file..'_test_fold-'..k..'_number_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
+    if file_exists(file..'_train_fold-'..(k-1)..'_labels.dat') == true then all_found = all_found + 1 end
+    if file_exists(file..'_test_fold-'..(k-1)..'_labels.dat') == true then all_found = all_found + 1 end
+    if file_exists(file..'_train_fold-'..(k-1)..'_profile_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
+    if file_exists(file..'_test_fold-'..(k-1)..'_profile_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
+    if file_exists(file..'_train_fold-'..(k-1)..'_number_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
+    if file_exists(file..'_test_fold-'..(k-1)..'_number_crop_'..opt.cropLength..'.t7') == true then all_found = all_found + 1 end
   end
   if all_found/6 == k_fold then
     return true
@@ -849,8 +918,8 @@ if opt.train == opt.test then
     training, testing = get_kfold_split( train_ppi, opt.kfold )
     --save k-fold subsets
     for k=1, opt.kfold do
-      torch.save( 'Data/'..opt.train..'_train_fold-'..k..'_labels.dat', training[k] )
-      torch.save( 'Data/'..opt.test..'_test_fold-'..k..'_labels.dat', testing[k] )
+      torch.save( 'Data/'..opt.train..'_train_fold-'..(k-1)..'_labels.dat', training[k] )
+      torch.save( 'Data/'..opt.test..'_test_fold-'..(k-1)..'_labels.dat', testing[k] )
     end
   end
 else
@@ -918,7 +987,7 @@ else
   else
     print('creating training crop files...')
     pNumber, ppFeature = prep_data(opt.train)
-  end 
+  end
   if file_exists(opt.dataDir..opt.test..'_profile_crop_'..crop_size..'.t7') and file_exists(opt.dataDir..opt.test..'_number_crop_'..crop_size..'.t7') then
     print(opt.test..' crop files already found')
   else
@@ -947,15 +1016,15 @@ if opt.crop then
     avg_pr = {}
     for k=1, opt.kfold do
     -------------- LOAD DATA CROSS-VALIDATION -----------
-      pNumber = torch.load( 'Data/'..opt.train..'_train_fold-'..k..'_number_crop_'..opt.cropLength..'.t7' )
-      test_pNumber = torch.load( 'Data/'..opt.test..'_test_fold-'..k..'_number_crop_'..opt.cropLength..'.t7' )
-      trainData[k] = pair_crop_load('Data/'..opt.train..'_train_fold-'..k..'_labels.dat',10, pNumber )
-      print(opt.train..' fold - '..k..' training on '..#trainData[k].org_data..' interactions')
-      testData[k] = pair_crop_load('Data/'..opt.test..'_test_fold-'..k..'_labels.dat',10, test_pNumber )
-      print(opt.test..' fold - '..k..' testing on '..#testData[k].org_data..' interactions')
+      pNumber = torch.load( 'Data/'..opt.train..'_train_fold-'..(k-1)..'_number_crop_'..opt.cropLength..'.t7' )
+      test_pNumber = torch.load( 'Data/'..opt.test..'_test_fold-'..(k-1)..'_number_crop_'..opt.cropLength..'.t7' )
+      trainData[k] = pair_crop_load('Data/'..opt.train..'_train_fold-'..(k-1)..'_labels.dat',10, pNumber )
+      print(opt.train..' fold - '..(k-1)..' training on '..#trainData[k].org_data..' interactions')
+      testData[k] = pair_crop_load('Data/'..opt.test..'_test_fold-'..(k-1)..'_labels.dat',10, test_pNumber )
+      print(opt.test..' fold - '..(k-1)..' testing on '..#testData[k].org_data..' interactions')
       
-      train_feature = torch.load( 'Data/'..opt.train..'_train_fold-'..k..'_profile_crop_'..opt.cropLength..'.t7' )
-      test_feature = torch.load( 'Data/'..opt.test..'_test_fold-'..k..'_profile_crop_'..opt.cropLength..'.t7' )
+      train_feature = torch.load( 'Data/'..opt.train..'_train_fold-'..(k-1)..'_profile_crop_'..opt.cropLength..'.t7' )
+      test_feature = torch.load( 'Data/'..opt.test..'_test_fold-'..(k-1)..'_profile_crop_'..opt.cropLength..'.t7' )
       num_features = train_feature[ trainData[k].data[1][1] ]:size(2)
       num_outputs = 1
       
@@ -980,15 +1049,15 @@ if opt.crop then
       model:cuda()
       criterion:cuda()
     
-      print('########## TRAINING - fold '..k..' ##########')
+      print('########## TRAINING - fold '..(k-1)..' ##########')
       for i=1, opt.epochs do
           train( i, trainData[k] )
       end 
     --------------- TEST AND EVALUATE ----------------------------- 
-      print('########## TESTING - fold '..k..' ##########')
+      print('########## TESTING - fold '..(k-1)..' ##########')
       val_scores, val_labels = make_prediction(testData[k], test_feature, k)
         
-      print('########## EVALUATING - fold '..k..' ##########')
+      print('########## EVALUATING - fold '..(k-1)..' ##########')
       tp, fp, tn, fn, total_pos, total_neg = get_performance(val_scores, val_labels)
       print('\ntp = '..tp..'\ntn = '..tn..'\nfp = '..fp..'\nfn = '..fn..'\n')
     
@@ -1009,7 +1078,7 @@ if opt.crop then
       avg_mcc[k] = mcc
       avg_roc[k] = auc_roc
       avg_pr[k] = auc_pr
-      print('Fold-'..k..' performance:')
+      print('Fold-'..(k-1)..' performance:')
       print('accuracy = '.. accuracy..'\nprecision = '..precision..'\nrecall = '..recall..'\nspecificity = '..specificity..'\nf1 = '..f1..'\nmcc = '..mcc..'\n')
       print('auc_roc = '..auc_roc..'\nauc_pr = '..auc_pr..'\n')
       print('time = '..os.time()-t_start..'\n')
