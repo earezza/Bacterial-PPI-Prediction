@@ -91,9 +91,12 @@ def recalculate_precision(df, precision, thresholds, ratio=IMBALANCE):
     new_precision = precision.copy()
     for t in range(0, len(thresholds)):
         tn, fp, fn, tp = metrics.confusion_matrix(df[df.columns[-1]], (df[df.columns[2]] >= thresholds[t]).astype(int)).ravel()
-        tp = tp*(1 + delta)
-        fp = fp*(1 - delta)
-        new_precision[t] = tp/(tp+fp)
+        lpp = tp/(tp+fn)
+        lnn = tn/(tn+fp)
+        if ratio != 0.5:
+            new_precision[t] = (lpp*(1 + delta)) / ( (lpp*(1 + delta)) + ((1 - lnn)*(1 - delta)) )
+        else:
+            new_precision[t] = (lpp)/(lpp + (1-lnn))
     return new_precision
 
 def compile_SPRINT(sprint_location, serial=False, parallel=False):
@@ -267,11 +270,11 @@ if __name__ == '__main__':
             
             # Evaluate k-fold performance and adjust for hypothetical imbalance
             precision, recall, thresholds = metrics.precision_recall_curve(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
-            precision = recalculate_precision(df_pred, precision, thresholds)
             fpr, tpr, __ = metrics.roc_curve(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             if IMBALANCE == 0.5:
                 pr_auc = metrics.average_precision_score(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             else:
+                precision = recalculate_precision(df_pred, precision, thresholds)
                 pr_auc = metrics.auc(recall, precision)
             roc_auc = metrics.roc_auc_score(df_pred[df_pred.columns[-1]], df_pred[df_pred.columns[2]])
             print('auc_roc=', roc_auc, '\nauc_pr=', pr_auc)
@@ -288,11 +291,11 @@ if __name__ == '__main__':
         
         # Get overall performance across all folds
         precision, recall, thresholds = metrics.precision_recall_curve(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
-        precision = recalculate_precision(df_pred_all, precision, thresholds)
         fpr, tpr, __ = metrics.roc_curve(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         if IMBALANCE == 0.5:
             pr_auc = metrics.average_precision_score(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         else:
+            precision = recalculate_precision(df_pred_all, precision, thresholds)
             pr_auc = metrics.auc(recall, precision)
         roc_auc = metrics.roc_auc_score(df_pred_all[df_pred_all.columns[-1]], df_pred_all[df_pred_all.columns[2]])
         
