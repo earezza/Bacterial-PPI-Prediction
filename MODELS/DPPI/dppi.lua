@@ -454,8 +454,8 @@ function get_kfold_split( Data , k )
     ind_neg = torch.cat(test_ind_neg, train_ind_neg)
   end
   --Map PPIs to indices for each subset
-  train = {}
-  test = {}
+  local train = {}
+  local test = {}
   for i=1, k do
     train[i] = {}
     test[i] = {}
@@ -592,7 +592,7 @@ function BNInit(name)
 end
 ----------------------MODEL-------------------------------------------------
 ----------------------TRAIN-------------------------------------------------
-function train(epoch, Data )
+function train_model(epoch, Data )
 
   -- choosing the optimization method and hyper-parameters
   if opt.optimization == 'SGD' then
@@ -1051,7 +1051,7 @@ if opt.crop then
     
       print('########## TRAINING - fold '..(k-1)..' ##########')
       for i=1, opt.epochs do
-          train( i, trainData[k] )
+          train_model( i, trainData[k] )
       end 
     --------------- TEST AND EVALUATE ----------------------------- 
       print('########## TESTING - fold '..(k-1)..' ##########')
@@ -1153,7 +1153,7 @@ if opt.crop then
     
       print('########## TRAINING ##########')
       for i=1, opt.epochs do
-        train( i, trainData )
+        train_model( i, trainData )
       end
       if opt.saveModel then
         torch.save( '/Models/'..saveName..'DPPI_model.t7', model )
