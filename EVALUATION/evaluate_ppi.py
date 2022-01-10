@@ -185,12 +185,18 @@ if __name__ == '__main__':
             # For imbalanced classification metrics
             if args.delta != 0.5:
                 accuracy, precision, recall, specificity, f1, mcc = recalculate_metrics_to_imbalance(tp, tn, fp, fn, args.delta)
-                if np.isnan(accuracy, where=False): avg_accuracy.append(accuracy)
-                if np.isnan(precision, where=False): avg_precision.append(precision)
-                if np.isnan(recall, where=False): avg_recall.append(recall)
-                if np.isnan(specificity, where=False): avg_specificity.append(specificity)
-                if np.isnan(f1, where=False): avg_f1.append(f1)
-                if np.isnan(mcc, where=False): avg_mcc.append(mcc)
+                if np.isnan(accuracy) == False:
+                    avg_accuracy.append(accuracy)
+                if np.isnan(precision) == False:
+                    avg_precision.append(precision)
+                if np.isnan(recall) == False:
+                    avg_recall.append(recall)
+                if np.isnan(specificity) == False:
+                    avg_specificity.append(specificity)
+                if np.isnan(f1) == False:
+                    avg_f1.append(f1)
+                if np.isnan(mcc) == False:
+                    avg_mcc.append(mcc)
             else:
                 try:
                     accuracy = round((tp+tn)/(tp+fp+tn+fn), 5)
