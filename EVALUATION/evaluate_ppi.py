@@ -156,10 +156,12 @@ if __name__ == '__main__':
 
     df_pred_avg = pd.DataFrame()
     fold = 0
+    output = args.name
     for k in files:
         
         # Isolate k-fold subset
         print('\n===== Fold - %s ====='%fold)
+        output += '\n===== Fold - %s ====='%fold
         
         # Read predictions for k-fold set or single test set
         if os.path.isdir(args.scores):
@@ -177,10 +179,11 @@ if __name__ == '__main__':
         df_pred_avg = df_pred_avg.append(df_pred)
         
         # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1:
+        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1 and 'SPRINT' not in args.scores:
             
             tn, fp, fn, tp = metrics.confusion_matrix(df_pred[1], (df_pred[0] + 1e-12).round()).ravel()
             print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
+            output += '\nTP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn)
             
             # For imbalanced classification metrics
             if args.delta != 0.5:
@@ -230,7 +233,7 @@ if __name__ == '__main__':
                     mcc = np.nan
             
             print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
-            
+            output += '\nAccuracy = ' + str(accuracy) + '\nPrecision = ' + str(precision) + '\nRecall = '+ str(recall) + '\nSpecificity = ' + str(specificity) + '\nF1 = ' + str(f1) + '\nMCC = ' + str(mcc)
         # Evaluate k-fold performance and adjust for hypothetical imbalance
         precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
         if args.delta != 0.5:
@@ -243,6 +246,7 @@ if __name__ == '__main__':
         roc_auc = metrics.roc_auc_score(df_pred[1], df_pred[0])
         
         print('AUC_ROC = %0.5f'%roc_auc, '\nAUC_PR = %0.5f'%pr_auc)
+        output += '\nAUC_ROC = %0.5f'%roc_auc + '\nAUC_PR = %0.5f\n'%pr_auc
         
         # Add k-fold performance for overall average performance
         tprs[fold] = tpr
@@ -271,40 +275,57 @@ if __name__ == '__main__':
         leg_loc = 'upper right'
     
     # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-    if df_pred_avg[0].min() >= 0 and df_pred_avg[0].max() <= 1:
-        evaluation = ('accuracy=%.5f (+/- %.5f)'%(np.mean(avg_accuracy), np.std(avg_accuracy))
-                      + '\nprecision=%.5f (+/- %.5f)'%(np.mean(avg_precision), np.std(avg_precision)) 
-                      + '\nrecall=%.5f (+/- %.5f)'%(np.mean(avg_recall), np.std(avg_recall)) 
-                      + '\nspecificity=%.5f (+/- %.5f)'%(np.mean(avg_specificity), np.std(avg_specificity)) 
-                      + '\nf1=%.5f (+/- %.5f)'%(np.mean(avg_f1), np.std(avg_f1)) 
-                      + '\nmcc=%.5f (+/- %.5f)'%(np.mean(avg_mcc), np.std(avg_mcc))
-                      + '\nroc_auc=%.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
-                      + '\npr_auc=%.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
-                      + '\nroc_auc_overall=%.5f' % (roc_auc)
-                      + '\npr_auc_overall=%.5f' % (pr_auc)
+    if df_pred_avg[0].min() >= 0 and df_pred_avg[0].max() <= 1 and 'SPRINT' not in args.scores:
+        evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(avg_accuracy), np.std(avg_accuracy))
+                      + '\nprecision = %.5f (+/- %.5f)'%(np.mean(avg_precision), np.std(avg_precision)) 
+                      + '\nrecall = %.5f (+/- %.5f)'%(np.mean(avg_recall), np.std(avg_recall)) 
+                      + '\nspecificity = %.5f (+/- %.5f)'%(np.mean(avg_specificity), np.std(avg_specificity)) 
+                      + '\nf1 = %.5f (+/- %.5f)'%(np.mean(avg_f1), np.std(avg_f1)) 
+                      + '\nmcc = %.5f (+/- %.5f)'%(np.mean(avg_mcc), np.std(avg_mcc))
+                      + '\nroc_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
+                      + '\npr_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
+                      + '\nroc_auc_overall = %.5f' % (roc_auc)
+                      + '\npr_auc_overall = %.5f' % (pr_auc)
                       + '\n')
     else:
-        evaluation = ('\nroc_auc=%.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
-                      + '\npr_auc=%.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
-                      + '\nroc_auc_overall=%.5f' % (roc_auc)
-                      + '\npr_auc_overall=%.5f' % (pr_auc)
+        evaluation = ('roc_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
+                      + '\npr_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
+                      + '\nroc_auc_overall = %.5f' % (roc_auc)
+                      + '\npr_auc_overall = %.5f' % (pr_auc)
                       + '\n')        
 
     print('\n===== EVALUATION =====')
     print(evaluation)
-    print('Writing metrics to file...')
+    output += '\n===== EVALUATION =====\n' + evaluation
+    print('Writing output to file...')
     with open(RESULTS_DIR + 'evaluation_' + args.name + '.txt', 'w') as fp:
-        fp.write(evaluation)
-        
+        fp.write(output)
+    
+    # Interpolate k-fold curves for overall std plotting
+    interp_precisions = {}
+    #pr_auc_interp = {}
+    for i in recalls.keys():
+        interp_precision = np.interp(recall, recalls[i], precisions[i], period=precision.shape[0]/precisions[i].shape[0])
+        interp_precisions[i] = interp_precision
+        #pr_auc_interp[i] = pr_aucs[i]
+    df_interp_precisions = pd.DataFrame(data=interp_precisions)
+    df_interp_precisions.insert(df_interp_precisions.shape[1], 'mean', df_interp_precisions.mean(axis=1))
+    df_interp_precisions.insert(df_interp_precisions.shape[1], 'std', df_interp_precisions.std(axis=1))
+    
     # Plot and save curves
     print("Plotting precision-recall")
     # Precision-Recall
     plt.figure
     print("\t...average curve...")
     plt.plot(recall, precision, color='black', label='AUC = %0.4f +/- %0.4f' % (pr_auc, np.std(np.fromiter(pr_aucs.values(), dtype=float))))
+    '''
     for i in recalls.keys():
         print("\t...fold-%s curve..."%i)
         plt.plot(recalls[i], precisions[i], alpha=0.25)
+    '''
+    plt.fill_between(recall, precision - df_interp_precisions['std'], precision + df_interp_precisions['std'], facecolor='blue', alpha=0.25)
+    plt.fill_between(recall, precision - 2*df_interp_precisions['std'], precision + 2*df_interp_precisions['std'], facecolor='blue', alpha=0.25)
+    #plt.plot(recall, df_interp_precisions['mean'], color='orange', label='AUC_folds = %0.4f +/- %0.4f' % (np.mean(np.fromiter(pr_auc_interp.values(), dtype=float)), np.std(np.fromiter(pr_auc_interp.values(), dtype=float))))
     plt.xlabel('Recall')
     plt.ylabel('Precision') 
     plt.xlim([-0.05, 1.05])
@@ -314,14 +335,30 @@ if __name__ == '__main__':
     plt.savefig(RESULTS_DIR + args.name + '_PR.png', format='png')
     plt.close()
     
+    # Interpolate k-fold curves for overall std plotting
+    interp_tprs = {}
+    #roc_auc_interp = {}
+    for i in fprs.keys():
+        interp_tpr = np.interp(fpr, fprs[i], tprs[i], period=tpr.shape[0]/tprs[i].shape[0])
+        interp_tprs[i] = interp_tpr
+        #roc_auc_interp[i] = roc_aucs[i]
+    df_interp_tprs = pd.DataFrame(data=interp_tprs)
+    df_interp_tprs.insert(df_interp_tprs.shape[1], 'mean', df_interp_tprs.mean(axis=1))
+    df_interp_tprs.insert(df_interp_tprs.shape[1], 'std', df_interp_tprs.std(axis=1))
+    
     # ROC
     print("Plotting ROC")
     plt.figure
     print("\t...average curve...")
     plt.plot(fpr, tpr, color='black', label='AUC = %0.4f +/- %0.4f' % (roc_auc, np.std(np.fromiter(roc_aucs.values(), dtype=float))))
+    '''
     for i in fprs.keys():
         print("\t...fold-%s curve..."%i)
         plt.plot(fprs[i], tprs[i], alpha=0.25)
+    '''
+    plt.fill_between(fpr, tpr - df_interp_tprs['std'], tpr + df_interp_tprs['std'], facecolor='blue', alpha=0.25)
+    plt.fill_between(fpr, tpr - 2*df_interp_tprs['std'], tpr + 2*df_interp_tprs['std'], facecolor='blue', alpha=0.25)
+    #plt.plot(fpr, df_interp_tprs['mean'], color='orange', label='AUC_folds = %0.4f +/- %0.4f' % (np.mean(np.fromiter(roc_auc_interp.values(), dtype=float)), np.std(np.fromiter(roc_auc_interp.values(), dtype=float))))
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.xlim([-0.05, 1.05])
