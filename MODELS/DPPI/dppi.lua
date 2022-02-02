@@ -53,6 +53,7 @@ cmd:option('-seed', 1, 'manual seed')
 cmd:option('-dataDir', './', 'directory path for data files')
 
 -- data:
+cmd:option('-pssmDir', '', 'directory path for data files')
 cmd:option('-train','','data to use for training')
 cmd:option('-test','','data to use for testing')
 
@@ -218,10 +219,14 @@ function prep_data( file )
 
   local ppFeature = {}
   local pNumber = {}
-
+  if opt.pssmDir ~= '' then
+    pssms = opt.pssmDir
+  else
+    pssms = opt.dataDir..file..'/'
+  end
   for i=1, #proteinString do
   
-    local fileName = opt.dataDir..file..'/'..proteinString[i][1]
+    local fileName = pssms..proteinString[i][1]
     if file_exists( fileName ) then
       local proFile = Csv( fileName, 'r', '\t')
       local profile = proFile:readall()
@@ -300,7 +305,11 @@ function prep_cv_data( file, k )
   local pNumber = {}
 
   for i=1, #proteins do
-    local fileName = opt.dataDir..folderName..'/'..proteins[i]
+    if opt.pssmDir == '' then
+      local fileName = opt.dataDir..folderName..'/'..proteins[i]
+    else
+      local fileName = opt.pssmDir..proteins[i]
+    end
     if file_exists( fileName ) then
       local proFile = Csv( fileName, 'r', '\t')
       local profile = proFile:readall()
