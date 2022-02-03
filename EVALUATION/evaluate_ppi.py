@@ -13,7 +13,7 @@ Usage:
     
     Input arguements:
         -s <str> Can be either:
-            - a directory path where tested PPI prediction k-fold subset files exist (file names must contain the word 'fold' and a number)
+            - a directory path where tested PPI prediction k-fold subset files exist (file names must contain the word 'prediction' and a number)
             - a file path for the tested PPI predictions
         -l <str> is the file path to the labelled PPIs
         -d <float> is the hypothetical imbalance ratio of positives/all PPIs, default is 0.5
@@ -56,7 +56,6 @@ args = parser.parse_args()
 RESULTS_DIR = args.results
 if not os.path.exists(RESULTS_DIR):
     os.mkdir(RESULTS_DIR)
-    
 if args.name == '':
     args.name = RESULTS_DIR.split('/')[-2].lower().capitalize() + '_' + args.labels.split('/')[-1].split('.')[0]
 
@@ -146,15 +145,15 @@ if __name__ == '__main__':
     pr_aucs = {}
     recalls = {}
 
-    # Additional metrics
-    avg_accuracy = []
-    avg_precision = []
-    avg_recall = []
-    avg_specificity = []
-    avg_f1 = []
-    avg_mcc = []
+    # Additional metrics from each k-fold subset
+    fold_accuracy = []
+    fold_precision = []
+    fold_recall = []
+    fold_specificity = []
+    fold_f1 = []
+    fold_mcc = []
 
-    df_pred_avg = pd.DataFrame()
+    df_pred_total = pd.DataFrame()
     fold = 0
     output = args.name
     for k in files:
@@ -176,7 +175,7 @@ if __name__ == '__main__':
         df_pred.rename(columns={'2_x': 0, '2_y': 1}, inplace=True)
         #df_pred[[0, 1]] = df_pred[[1, 0]]
         
-        df_pred_avg = df_pred_avg.append(df_pred)
+        df_pred_total = df_pred_total.append(df_pred)
         
         # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
         if df_pred[0].min() >= 0 and df_pred[0].max() <= 1 and 'SPRINT' not in args.scores:
@@ -189,46 +188,46 @@ if __name__ == '__main__':
             if args.delta != 0.5:
                 accuracy, precision, recall, specificity, f1, mcc = recalculate_metrics_to_imbalance(tp, tn, fp, fn, args.delta)
                 if np.isnan(accuracy) == False:
-                    avg_accuracy.append(accuracy)
+                    fold_accuracy.append(accuracy)
                 if np.isnan(precision) == False:
-                    avg_precision.append(precision)
+                    fold_precision.append(precision)
                 if np.isnan(recall) == False:
-                    avg_recall.append(recall)
+                    fold_recall.append(recall)
                 if np.isnan(specificity) == False:
-                    avg_specificity.append(specificity)
+                    fold_specificity.append(specificity)
                 if np.isnan(f1) == False:
-                    avg_f1.append(f1)
+                    fold_f1.append(f1)
                 if np.isnan(mcc) == False:
-                    avg_mcc.append(mcc)
+                    fold_mcc.append(mcc)
             else:
                 try:
                     accuracy = round((tp+tn)/(tp+fp+tn+fn), 5)
-                    avg_accuracy.append(accuracy)
+                    fold_accuracy.append(accuracy)
                 except ZeroDivisionError:
                     accuracy = np.nan
                 try:
                     precision = round(tp/(tp+fp), 5)
-                    avg_precision.append(precision)
+                    fold_precision.append(precision)
                 except ZeroDivisionError:
                     precision = np.nan
                 try:
                     recall = round(tp/(tp+fn), 5)
-                    avg_recall.append(recall)
+                    fold_recall.append(recall)
                 except ZeroDivisionError:
                     recall = np.nan
                 try:
                     specificity = round(tn/(tn+fp), 5)
-                    avg_specificity.append(specificity)
+                    fold_specificity.append(specificity)
                 except ZeroDivisionError:
                     specificity = np.nan
                 try:
                     f1 = round((2*tp)/(2*tp+fp+fn), 5)
-                    avg_f1.append(f1)
+                    fold_f1.append(f1)
                 except ZeroDivisionError:
                     f1 = np.nan
                 try:
                     mcc = round( ( ((tp*tn) - (fp*fn)) / np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)) ), 5)
-                    avg_mcc.append(mcc)
+                    fold_mcc.append(mcc)
                 except ZeroDivisionError:
                     mcc = np.nan
             
@@ -259,15 +258,15 @@ if __name__ == '__main__':
         fold += 1
     
     # Get total performance from all PPI predictions (concatenated k-fold tested subsets)
-    precision, recall, thresholds = metrics.precision_recall_curve(df_pred_avg[1], df_pred_avg[0])
+    precision, recall, thresholds = metrics.precision_recall_curve(df_pred_total[1], df_pred_total[0])
     if args.delta != 0.5:
-        precision = recalculate_precision(df_pred_avg, precision, thresholds, args.delta)
-    fpr, tpr, __ = metrics.roc_curve(df_pred_avg[1], df_pred_avg[0])
+        precision = recalculate_precision(df_pred_total, precision, thresholds, args.delta)
+    fpr, tpr, __ = metrics.roc_curve(df_pred_total[1], df_pred_total[0])
     if args.delta == 0.5:
-        pr_auc = metrics.average_precision_score(df_pred_avg[1], df_pred_avg[0])
+        pr_auc = metrics.average_precision_score(df_pred_total[1], df_pred_total[0])
     else:
         pr_auc = metrics.auc(recall, precision)
-    roc_auc = metrics.roc_auc_score(df_pred_avg[1], df_pred_avg[0])
+    roc_auc = metrics.roc_auc_score(df_pred_total[1], df_pred_total[0])
     
     if args.delta <= 0.5:
         leg_loc = 'lower right'
@@ -275,13 +274,13 @@ if __name__ == '__main__':
         leg_loc = 'upper right'
     
     # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-    if df_pred_avg[0].min() >= 0 and df_pred_avg[0].max() <= 1 and 'SPRINT' not in args.scores:
-        evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(avg_accuracy), np.std(avg_accuracy))
-                      + '\nprecision = %.5f (+/- %.5f)'%(np.mean(avg_precision), np.std(avg_precision)) 
-                      + '\nrecall = %.5f (+/- %.5f)'%(np.mean(avg_recall), np.std(avg_recall)) 
-                      + '\nspecificity = %.5f (+/- %.5f)'%(np.mean(avg_specificity), np.std(avg_specificity)) 
-                      + '\nf1 = %.5f (+/- %.5f)'%(np.mean(avg_f1), np.std(avg_f1)) 
-                      + '\nmcc = %.5f (+/- %.5f)'%(np.mean(avg_mcc), np.std(avg_mcc))
+    if df_pred_total[0].min() >= 0 and df_pred_total[0].max() <= 1 and 'SPRINT' not in args.scores:
+        evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(fold_accuracy), np.std(fold_accuracy))
+                      + '\nprecision = %.5f (+/- %.5f)'%(np.mean(fold_precision), np.std(fold_precision)) 
+                      + '\nrecall = %.5f (+/- %.5f)'%(np.mean(fold_recall), np.std(fold_recall)) 
+                      + '\nspecificity = %.5f (+/- %.5f)'%(np.mean(fold_specificity), np.std(fold_specificity)) 
+                      + '\nf1 = %.5f (+/- %.5f)'%(np.mean(fold_f1), np.std(fold_f1)) 
+                      + '\nmcc = %.5f (+/- %.5f)'%(np.mean(fold_mcc), np.std(fold_mcc))
                       + '\nroc_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
                       + '\npr_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
                       + '\nroc_auc_overall = %.5f' % (roc_auc)
