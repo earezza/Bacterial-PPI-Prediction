@@ -183,6 +183,8 @@ if __name__ == '__main__':
             tn, fp, fn, tp = metrics.confusion_matrix(df_pred[1], (df_pred[0] + 1e-12).round()).ravel()
             print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
             output += '\nTP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn)
+            print('Total samples = %s'%(tn+fp+fn+tp))
+            output += 'Total_samples = %s'%(tn+fp+fn+tp)
             
             # For imbalanced classification metrics
             if args.delta != 0.5:
@@ -330,7 +332,7 @@ if __name__ == '__main__':
     plt.xlim([-0.05, 1.05])
     plt.ylim([-0.05, 1.05])
     plt.title("Precision-Recall Curve - %s %s"%(args.name, RATIO))
-    plt.legend(loc=leg_loc, handlelength=0)
+    plt.legend(loc=leg_loc, handlelength=0, prop={'size': 8})
     plt.savefig(RESULTS_DIR + args.name + '_PR.png', format='png')
     plt.close()
     
@@ -363,6 +365,6 @@ if __name__ == '__main__':
     plt.xlim([-0.05, 1.05])
     plt.ylim([-0.05, 1.05])
     plt.title("ROC Curve - %s %s"%(args.name, RATIO))
-    plt.legend(loc=leg_loc, handlelength=0)
+    plt.legend(loc=leg_loc, handlelength=0, prop={'size': 8})
     plt.savefig(RESULTS_DIR + args.name + '_ROC.png', format='png')
     plt.close()

@@ -48,15 +48,18 @@ import pandas as pd
 import numpy as np
 from sklearn import metrics
 import matplotlib.pyplot as plt
-from scipy.stats import f_oneway, ttest_ind
+from scipy.stats import f_oneway, ttest_ind, ttest_rel
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from itertools import combinations
+import time
 
 describe_help = 'python compare_performance.py -s SCORES_1/ SCORES_2 -l labels.tsv -d 0.5 -r RESULTS/ -n scores1_vs_scores2'
 parser = argparse.ArgumentParser(description=describe_help)
-parser.add_argument('-s', '--scores', help='Full path to scored PPIs (directory to cross-validation files or single test file path)', type=list)
-parser.add_argument('-l', '--labels', help='Full path to labelled PPIs (.tsv file, no header, using labels 0 (neg) and 1 (pos))', type=list)
+parser.add_argument('-s', '--scores', help='Full path to scored PPIs (directory to cross-validation files or single test file path)',
+                    nargs="+", type=str, required=True)
+parser.add_argument('-l', '--labels', help='Full path to labelled PPIs (.tsv file, no header, using labels 0 (neg) and 1 (pos))'
+                    , nargs="+", type=str)
 parser.add_argument('-r', '--results', help='Path to directory for saving files', 
                     type=str, default=os.getcwd()+'/COMPARISONS/')
 parser.add_argument('-d', '--delta', help='Imbalance ratio as positives/total (e.g. balanced = 0.5) for estimate of performance on hypothetical imbalanced data', 
@@ -65,6 +68,8 @@ parser.add_argument('-n', '--name', help='Name for saving files, default basenam
                     type=str, default='')
 parser.add_argument('-m', '--metric', help='Metric used to compare performance', 
                     type=str, default='auc_pr', choices=['auc_pr', 'auc_roc', 'precision', 'recall', 'accuracy', 'specificity', 'f1', 'mcc'])
+parser.add_argument('-t', '--ttest_type', help='Paired if same samples tested under variable, independent if different samples tested under variable', 
+                    type=str, default='ind', choices=['ind', 'paired'])
 args = parser.parse_args()
 
 RESULTS_DIR = args.results
@@ -131,7 +136,7 @@ def get_matching_pairs(df_1, df_2):
     return matches
 
 def get_metrics(scores, labels, delta):
-    print('Calculating performance for predictions:\n\t%s\nUsing labels:\n\t%s\nDelta:\t%s\n'%(scores, labels, delta))
+    print('Calculating performance for predictions:\n\t%s\nUsing labels:\n\t%s\nDelta:\t%s'%(scores, labels, delta))
     # Get PPI scores
     if os.path.isdir(scores):
         # For cross-validation tested PPI subsets
@@ -190,7 +195,7 @@ def get_metrics(scores, labels, delta):
             
             tn, fp, fn, tp = metrics.confusion_matrix(df_pred[1], (df_pred[0] + 1e-12).round()).ravel()
             print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
-            
+            print('Total_samples = %s'%(tn+fp+fn+tp))
             # For imbalanced classification metrics
             if delta != 0.5:
                 accuracy, precision, recall, specificity, f1, mcc = recalculate_metrics_to_imbalance(tp, tn, fp, fn, delta)
@@ -358,7 +363,7 @@ def test_anova(to_test):
     else:
         print("Significant difference for a=0.01 -> NO")
 
-def test_t(to_test):
+def test_t(to_test, paired_or_independent='ind'):
     # Run two-tailed t-test between each combination of methods compared
     df = to_test.copy()
     combos = list(combinations(df.columns, 2))
@@ -366,7 +371,10 @@ def test_t(to_test):
     a2 = 0.01
     for i in range(len(combos)):
         print('\n\t', combos[i][0], 'vs.', combos[i][1])
-        ttest = ttest_ind(df[combos[i][0]], df[combos[i][1]])
+        if paired_or_independent == 'ind':
+            ttest = ttest_ind(df[combos[i][0]], df[combos[i][1]])
+        else:
+            ttest = ttest_rel(df[combos[i][0]], df[combos[i][1]])
         print('T-statistic:', ttest.statistic)
         print('p-value:', ttest.pvalue)
         if ttest.pvalue < a1:
@@ -380,9 +388,9 @@ def test_t(to_test):
 
 if __name__ == '__main__':
     
-    #log = open("%s%s.log"%(args.results, args.name), "a")
-    #sys.stdout = log
-    
+    log = open("%s%s.log"%(args.results, args.name), "a")
+    sys.stdout = log
+    t_start = time.time()
     scores_labels_mapping = {}
     for i in range(0, len(args.scores)):
         if len(args.labels) == 1:
@@ -410,19 +418,19 @@ if __name__ == '__main__':
     
     to_test = pd.DataFrame()
     for n in names:
-        to_test.insert(to_test.shape[1], n, performances[n][args.metric])
+        if performances[n][args.metric].shape[0] > 1:
+            to_test.insert(to_test.shape[1], n, performances[n][args.metric])
         
-    print('===== COMPARING PERFORMANCES =====')
+    print('========== COMPARING PERFORMANCES ==========')
     print('----- ANOVA -----\n')
     test_anova(to_test)
-    print('\n----- t-Test -----\n')
-    test_t(to_test)
+    print('\n----- t-Test -----')
+    test_t(to_test, args.ttest_type)
     
     print('\n===== PLOTTING CURVES =====')
     # Display ratio of positives:negatives
     RATIO = '1:' + str(int((1/args.delta) - 1))
-    
-    print("Plotting precision-recall")
+
     # Precision-Recall
     plt.figure
     for n in names:
@@ -451,7 +459,9 @@ if __name__ == '__main__':
     plt.ylabel('True Positive Rate')
     plt.xlim([-0.05, 1.05])
     plt.ylim([-0.05, 1.05])
-    plt.title("ROC Curve - %s %s"%(name, RATIO))
+    plt.title("ROC Curve - %s %s"%(args.name, RATIO))
     plt.legend(loc='lower right', handlelength=1, prop={'size': 8})
     plt.savefig(RESULTS_DIR + args.name + '_ROC.png', format='png')
     plt.close()
+    
+    print('Done\nTime = %.3f seconds'%(time.time() - t_start))
