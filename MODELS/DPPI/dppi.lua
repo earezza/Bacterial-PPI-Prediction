@@ -23,7 +23,7 @@
         Deep learning CNN approach to binary classification of protein-protein interaction prediction.
 
 ]]
-
+-- run using NVIDIA P100 Pascal GPU
 --------------------------DPPI------------------------------------------------------
 require 'torch'
 require 'cutorch'
@@ -724,43 +724,6 @@ function recalculate_crop( v_score, v_labels, Data, k )
   return new_score, new_labels
 end
 
--- Calculates the Mean Average Precision (MAP)
-function MAP (score, truth)
-  local x,ind,map,P,TP,FP,N  
-  x, ind = torch.sort(score, 1, true)
-  if num_outputs == 1 then
-    truth:add(1):div(2)
-  end
-  
-  P = torch.sum( truth,1 )
-  local precision = torch.Tensor(score:size(1),1)
-  local recall = torch.Tensor(score:size(1),1)
-  local specificity = torch.Tensor(score:size(1),1)
-
-  my_error = 0
-  map = 0
-  for c=1, score:size(2) do
-    TP = 0
-    FP = 0
-    FN = 0
-
-    N = score:size(1) - P[1][c] 
-    for i=1, score:size(1) do  
-      TP = TP + truth[ind[i][c]][c]
-      FP = FP + (1 - truth[ind[i][c]][c] )      
-
-      precision[i][1] = TP / (FP + TP)
-      recall[i][1] = TP / P[1][c] 
-      specificity[i][1] = FP / N  
-      
-      map = map + ( truth[ind[i][c]][c] * TP / ( P[1][c] * ( FP + TP ) ) )
-    end
-  end
-  print("error ", my_error)
-  map = map / ( score:size(2) ) 
-  return map, precision, recall, specificity
-end
-
 function make_prediction (Data, feature, k)
 
   local val_obj = 0
@@ -829,6 +792,8 @@ function get_performance(scores, truths)
   return tp, fp, tn, fn, total_pos, total_neg
 end
 
+-- Improper
+--[[
 function get_auc(scores, truths)
   local tp = 0
   local fp = 0 
@@ -885,6 +850,7 @@ function get_auc(scores, truths)
   
   return auc_roc, auc_pr
 end
+]]
 ------------------------PREDICT & EVALUATE---------------------------------
 
 function cv_files_exist( file, k_fold )
@@ -1021,8 +987,8 @@ if opt.crop then
     avg_specificity = {}
     avg_f1 = {}
     avg_mcc = {}
-    avg_roc = {}
-    avg_pr = {}
+    --avg_roc = {}
+    --avg_pr = {}
     for k=1, opt.kfold do
     -------------- LOAD DATA CROSS-VALIDATION -----------
       pNumber = torch.load( 'Data/'..opt.train..'_train_fold-'..(k-1)..'_number_crop_'..opt.cropLength..'.t7' )
@@ -1077,7 +1043,7 @@ if opt.crop then
       f1 = 2. * precision * recall / (precision + recall + 1e-06)
       mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ^ 0.5)
       
-      auc_roc, auc_pr = get_auc(val_scores, val_labels)
+      --auc_roc, auc_pr = get_auc(val_scores, val_labels)
         
       avg_accuracy[k] = accuracy
       avg_precision[k] = precision
@@ -1085,11 +1051,11 @@ if opt.crop then
       avg_specificity[k] = specificity
       avg_f1[k] = f1
       avg_mcc[k] = mcc
-      avg_roc[k] = auc_roc
-      avg_pr[k] = auc_pr
+      --avg_roc[k] = auc_roc
+      --avg_pr[k] = auc_pr
       print('Fold-'..(k-1)..' performance:')
       print('accuracy = '.. accuracy..'\nprecision = '..precision..'\nrecall = '..recall..'\nspecificity = '..specificity..'\nf1 = '..f1..'\nmcc = '..mcc..'\n')
-      print('auc_roc = '..auc_roc..'\nauc_pr = '..auc_pr..'\n')
+      --print('auc_roc = '..auc_roc..'\nauc_pr = '..auc_pr..'\n')
       print('time = '..os.time()-t_start..'\n')
     end
     
@@ -1099,8 +1065,8 @@ if opt.crop then
     avg_specificity = torch.Tensor(avg_specificity)
     avg_f1 = torch.Tensor(avg_f1)
     avg_mcc = torch.Tensor(avg_mcc)
-    avg_roc = torch.Tensor(avg_roc)
-    avg_pr = torch.Tensor(avg_pr)
+    --avg_roc = torch.Tensor(avg_roc)
+    --avg_pr = torch.Tensor(avg_pr)
     
     performance = 'accuracy='..torch.mean(avg_accuracy)..' (+/-'..torch.std(avg_accuracy)..')'..
     '\nprecision='..torch.mean(avg_precision)..' (+/-'..torch.std(avg_precision)..')'..
@@ -1108,8 +1074,8 @@ if opt.crop then
     '\nspecificity='..torch.mean(avg_specificity)..' (+/-'..torch.std(avg_specificity)..')'..
     '\nf1='..torch.mean(avg_f1)..' (+/-'..torch.std(avg_f1)..')'..
     '\nmcc='..torch.mean(avg_mcc)..' (+/-'..torch.std(avg_mcc)..')'..
-    '\nauc_roc='..torch.mean(avg_roc)..' (+/-'..torch.std(avg_roc)..')'..
-    '\nauc_pr='..torch.mean(avg_pr)..' (+/-'..torch.std(avg_pr)..')'..'\n'..
+    --'\nauc_roc='..torch.mean(avg_roc)..' (+/-'..torch.std(avg_roc)..')'..
+    --'\nauc_pr='..torch.mean(avg_pr)..' (+/-'..torch.std(avg_pr)..')'..'\n'..
     '\ntime = '..os.time()-t_start..'\n'
     
     print('Average Performance:')
@@ -1185,10 +1151,11 @@ if opt.crop then
     f1 = 2. * precision * recall / (precision + recall + 1e-06)
     mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ^ 0.5)
     
-    auc_roc, auc_pr = get_auc(val_scores, val_labels)
+    --auc_roc, auc_pr = get_auc(val_scores, val_labels)
     
     performance = 'accuracy='.. accuracy..'\nprecision='..precision..'\nrecall='..recall..'\nspecificity='..specificity..'\nf1='..f1..'\nmcc='..mcc..
-    '\nauc_roc='..auc_roc..'\nauc_pr='..auc_pr..'\ntime = '..os.time()-t_start..'\n'
+    --'\nauc_roc='..auc_roc..'\nauc_pr='..auc_pr..
+    '\ntime = '..os.time()-t_start..'\n'
     print(performance)
     --write results to file
     metrics = io.open('Results/results_'..saveName..'.txt', 'w')
