@@ -514,9 +514,13 @@ def generate_negative_interactions(df_pos, diff_locations=False):
         df_neg = df_neg.append(pd.DataFrame(generator.choice(sample_proteins, size=df.shape)), ignore_index=True)
         # Remove redundant and sort AB order of PPI pairs
         df_neg = remove_redundant_pairs(df_neg)
+        df_neg_rev = pd.DataFrame({0: df_neg[1], 1: df_neg[0]})
         
         # Get pairs found in positive PPIs and remove from negatives
         in_pos = df.merge(df_neg)
+        in_pos_rev = df.merge(df_neg_rev)
+        in_pos_rev = pd.DataFrame({0: in_pos_rev[1], 1: in_pos_rev[0]})
+        in_pos = in_pos.append(in_pos_rev)
         df_neg = df_neg.append(in_pos).drop_duplicates(keep=False)
         
         # Remove intra-species PPIs for negative inter-species pairs
@@ -818,6 +822,11 @@ def create_cv_subsets(filename, df_ppi, df_fasta, k_splits=5):
             df_test = pos_test.append(neg_test, ignore_index=True)
             df_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
             df_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+            if 'DPPI' in filename:
+                prot_train = pd.DataFrame(df_train[df_train.columns[0]].append(df_train[df_train.columns[1]]).unique())
+                prot_test = pd.DataFrame(df_test[df_test.columns[0]].append(df_test[df_test.columns[1]]).unique())
+                prot_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '.node', header=None, index=False)
+                prot_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '.node', header=None, index=False)
         fold += 1
     print("\tCross-validation subsets created!")
 
