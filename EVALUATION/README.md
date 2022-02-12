@@ -46,7 +46,7 @@ ___
 ### compare_performance.py Usage:
     eg.
     python compare_performance.py -s SCORES_1/ SCORES_2/ SCORES_3/ -l labels_1.tsv labels_2.tsv labels_3.tsv -d 0.5 -r RESULTS/
-    python compare_performance.py -s SCORES_1.tsv SCORES_2.tsv SCORES_3.tsv -l labels.tsv -d 0.5 -r RESULTS/ -m auc_pr -t
+    python compare_performance.py -s SCORES_1.tsv SCORES_2.tsv SCORES_3.tsv -l labels.tsv -d 0.5 -r RESULTS/ -m auc_pr -t paired
     
     Input arguements:
         -s list of <str> Can be either:
