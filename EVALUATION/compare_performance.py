@@ -57,7 +57,7 @@ import time
 describe_help = 'python compare_performance.py -s SCORES_1/ SCORES_2 -l labels.tsv -d 0.5 -r RESULTS/ -n scores1_vs_scores2'
 parser = argparse.ArgumentParser(description=describe_help)
 parser.add_argument('-s', '--scores', help='Full path to scored PPIs (directory to cross-validation files or single test file path)',
-                    nargs="+", type=str, required=True)
+                    nargs="+", type=str)
 parser.add_argument('-l', '--labels', help='Full path to labelled PPIs (.tsv file, no header, using labels 0 (neg) and 1 (pos))'
                     , nargs="+", type=str)
 parser.add_argument('-r', '--results', help='Path to directory for saving files', 
@@ -180,6 +180,11 @@ def get_metrics(scores, labels, delta):
             df_pred = pd.read_csv(scores + k, delim_whitespace=True, header=None)
         else:
             df_pred = pd.read_csv(scores, delim_whitespace=True, header=None)
+        
+        # Remove any extra columns if exists to prevent subsequent problems in functions
+        # predictions files should be ProteinA ProteinB Score
+        if df_pred.shape[1] > 3:
+            df_pred.drop(columns=df_pred.columns[3:].tolist(), inplace=True)
         
         # Get matching PPI labels for predictions
         #if '_SPRINT_' not in k and ('SPRINT' not in args.scores and 'CME' not in args.scores):
