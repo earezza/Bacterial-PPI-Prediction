@@ -75,7 +75,7 @@ Description:
                     5 (DEFAULT): saves data subsets under CV_SET/ including formatted data as per -m option
                     0 or 1: does not create k-fold subsets
                 -a <flag> generates all-to-all PPIs, positively labelled, for proteins in the final dataset (BE MINDFUL OF HARDDRIVE/STORAGE)
-                    
+                -pm <flag> creates Park&Marcotte sets from final dataset for evaluations, default is False)
                 
 @author: Eric Arezza
 Last Updated: August 30 2021
@@ -98,6 +98,7 @@ __all__ = ['get_hpidb_interactions',
            'convert_deepfe',
            'convert_dppi',
            'create_cv_subsets',
+           'park_marcotte_subsets'
            ]
 __version__ = '1.0'
 __author__ = 'Eric Arezza'
@@ -113,7 +114,7 @@ import numpy as np
 import urllib.parse
 import urllib.request
 from io import StringIO
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from itertools import combinations_with_replacement
 
 describe_help = 'python preprocess_hpidb.py filename.txt -cdhit /usr/bin/cd-hit -c2 -f -s0.6 -m pipr sprint deepfe dppi -k5'
@@ -140,6 +141,7 @@ parser.add_argument('-m', '--models', help='Model for dataset formatting',
                     default=[], type=str, nargs='+')
 parser.add_argument('-k', '--kfolds', help='Number of K-Fold splits of data, 0 or 1 produces no subsets (default 5)', type=int, default=5)
 parser.add_argument('-a', '--all_to_all', help='Flag to generate all-to-all PPIs for proteins in the final dataset', action='store_true')
+parser.add_argument('-pm', '--park_marcotte', help='Flag to create Park & Marcotte sets from final datasets (default false)', action='store_true')
 args = parser.parse_args()
 
 if args.name == None:
@@ -722,7 +724,7 @@ def get_protein_locations(proteins):
     return df_uniprot
 
 # ======================= FUNCTIONS FOR STEP 4 =======================
-def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_to_all=False):
+def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_to_all=False, park_marcotte=False):
     pos = df_pos.copy()
     neg = df_neg.copy()
     fasta = df_fasta.copy()
@@ -751,11 +753,36 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
         filename = filename + '_all'
         df_all.to_csv(SAVE_LOCATION + filename + '_interactions.tsv', sep='\t', header=None, index=False)
         format_ppi_data(filename, df_all, fasta, methods=models, k_folds=0)
+        
+    # Create and save Park & Marcotte sets
+    if park_marcotte:
+        print('Saving Park & Marcotte sets...')
+        train, test_c1, test_c2, test_c3 = park_marcotte_subsets(df, train_size=0.7)
+        c1_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c1[test_c1.columns[0]].append(test_c1[test_c1.columns[1]]).unique())]
+        c2_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c2[test_c2.columns[0]].append(test_c2[test_c2.columns[1]]).unique())]
+        c3_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c3[test_c3.columns[0]].append(test_c3[test_c3.columns[1]]).unique())]
+        
+        # Save in SAVE_LOCATION
+        train.to_csv(SAVE_LOCATION + filename + '_pm_train' + '_interactions.tsv', sep='\t', header=None, index=False)
+        fasta.to_csv(SAVE_LOCATION + filename + '_pm_train' + '_sequences.fasta', sep='\n', header=None, index=False)
+        test_c1.to_csv(SAVE_LOCATION + filename + '_pm_test_c1' + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c2.to_csv(SAVE_LOCATION + filename + '_pm_test_c2' + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c3.to_csv(SAVE_LOCATION + filename + '_pm_test_c3' + '_interactions.tsv', sep='\t', header=None, index=False)
+        c1_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c1' + '_sequences.fasta', sep='\n', header=None, index=False)
+        c2_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c2' + '_sequences.fasta', sep='\n', header=None, index=False)
+        c3_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c3' + '_sequences.fasta', sep='\n', header=None, index=False)
+        # Save formatted for PPI prediction methods
+        format_ppi_data(filename + '_pm_train', train, fasta, methods=models, k_folds=0)
+        format_ppi_data(filename + '_pm_test_c1', test_c1, c1_fasta, methods=models, k_folds=0)
+        format_ppi_data( filename + '_pm_test_c2', test_c2, c2_fasta, methods=models, k_folds=0)
+        format_ppi_data(filename + '_pm_test_c3', test_c3, c3_fasta, methods=models, k_folds=0)
 
 def format_ppi_data(filename, df_ppi, df_fasta, methods=[], k_folds=0):
     ppi = df_ppi.copy()
     fasta = df_fasta.copy()
 
+    create_cv_subsets(filename, ppi, fasta, k_splits=k_folds)
+    
     # Format data as per model input
     for m in methods:
         if m.lower() == 'pipr':
@@ -772,8 +799,6 @@ def format_ppi_data(filename, df_ppi, df_fasta, methods=[], k_folds=0):
             create_cv_subsets(file, df, seq, k_splits=k_folds)
         elif m.lower() not in methods:
             print('\t%s data formatting is not available\n'%m)
-        
-    create_cv_subsets(filename, ppi, fasta, k_splits=k_folds)
         
 def convert_pipr(file, df_ppi, df_fasta, save=False):
     if save:
@@ -954,6 +979,54 @@ def create_cv_subsets(filename, df_ppi, df_fasta, k_splits=5):
             df_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
         fold += 1
     print("\tCross-validation subsets created!")
+    
+# Return training set,
+# c1_test (both proteins in pairs are found in training set),
+# c2_test (only 1 protein in pairs is found in training set),
+# c3_test (no pairs contain proteins found in training set)
+def park_marcotte_subsets(df, train_size=0.7):
+    
+    # Attempt 5 times to obtain most interactions possible in test set 3 due to randomization of train_test_split
+    best_c1 = pd.DataFrame()
+    best_c2 = pd.DataFrame()
+    best_c3 = pd.DataFrame()
+    best_train = pd.DataFrame()
+    for t in range(0,5):
+        # Create stratified train/test split
+        pos = df[df[df.columns[-1]] == 1]
+        neg = df[df[df.columns[-1]] == 0]
+        train_pos, test_pos = train_test_split(pos, train_size=train_size)
+        train_neg, test_neg = train_test_split(neg, train_size=train_size)
+        train = train_pos.append(train_neg)
+        train.reset_index(drop=True, inplace=True)
+        test = test_pos.append(test_neg)
+        test.reset_index(drop=True, inplace=True)
+        
+        # Get proteins
+        train_proteins = pd.DataFrame(train[0].append(train[1]).unique())
+        test_proteins = pd.DataFrame(test[0].append(test[1]).unique())
+        # Get proteins found in both train and test
+        proteins_both = test_proteins[test_proteins[0].isin(train_proteins[0])]
+    
+        # Create c1, c2, c3 sets
+        c1 = test[(test[0].isin(proteins_both[0])) & (test[1].isin(proteins_both[0]))]
+        c2 = test[(test[0].isin(proteins_both[0])) ^ (test[1].isin(proteins_both[0]))]
+        c3 = test[(~test[0].isin(proteins_both[0])) & (~test[1].isin(proteins_both[0]))]
+        
+        if c3.shape[0] > best_c3.shape[0]:
+            best_c1 = c1.copy()
+            best_c2 = c2.copy()
+            best_c3 = c3.copy()
+            best_train = train.copy()
+        
+    if best_c1.empty:
+        print('No c1 test set')
+    if best_c2.empty:
+        print('No c2 test set')
+    if best_c3.empty:
+        print('No c3 test set')
+        
+    return best_train, best_c1, best_c2, best_c3
 
 if __name__ == "__main__":
     # Display args
@@ -1011,7 +1084,8 @@ if __name__ == "__main__":
                         df_intra_pos = df_intra_pos[df_intra_pos.columns[:2]]
                         df_intra_pos.columns = df_intra_neg.columns
                         df_intra_neg = df_intra_neg[df_intra_neg.columns[:2]]
-                        save_ppi_data(filename, df_intra_pos, df_intra_neg, df_intra_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
+                        save_ppi_data(filename, df_intra_pos, df_intra_neg, df_intra_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
+                        print('\nTime %s seconds...'%round(time.time() - start, 2))
             except Exception as e:
                 print(e)
                 exit()
@@ -1065,7 +1139,8 @@ if __name__ == "__main__":
                     df_inter_pos = df_inter_pos[df_inter_pos.columns[:2]]
                     df_inter_pos.columns = df_inter_neg.columns
                     df_inter_neg = df_inter_neg[df_inter_neg.columns[:2]]
-                    save_ppi_data(filename, df_inter_pos, df_inter_neg, df_inter_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all)
+                    save_ppi_data(filename, df_inter_pos, df_inter_neg, df_inter_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
+                    print('\nTime %s seconds...'%round(time.time() - start, 2))
             except Exception as e:
                 print('**********\n', e, '\n')
                 os.remove(SAVE_LOCATION + filename + '_interactions.tsv')
