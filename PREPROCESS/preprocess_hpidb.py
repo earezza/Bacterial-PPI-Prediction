@@ -761,6 +761,13 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
         c1_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c1[test_c1.columns[0]].append(test_c1[test_c1.columns[1]]).unique())]
         c2_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c2[test_c2.columns[0]].append(test_c2[test_c2.columns[1]]).unique())]
         c3_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c3[test_c3.columns[0]].append(test_c3[test_c3.columns[1]]).unique())]
+        train.reset_index(drop=True, inplace=True)
+        test_c1.reset_index(drop=True, inplace=True)
+        test_c2.reset_index(drop=True, inplace=True)
+        test_c3.reset_index(drop=True, inplace=True)
+        c1_fasta.reset_index(drop=True, inplace=True)
+        c2_fasta.reset_index(drop=True, inplace=True)
+        c3_fasta.reset_index(drop=True, inplace=True)
         
         # Save in SAVE_LOCATION
         train.to_csv(SAVE_LOCATION + filename + '_pm_train' + '_interactions.tsv', sep='\t', header=None, index=False)
@@ -771,11 +778,17 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
         c1_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c1' + '_sequences.fasta', sep='\n', header=None, index=False)
         c2_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c2' + '_sequences.fasta', sep='\n', header=None, index=False)
         c3_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c3' + '_sequences.fasta', sep='\n', header=None, index=False)
+        
         # Save formatted for PPI prediction methods
+        print('\tSaving PM train set...')
         format_ppi_data(filename + '_pm_train', train, fasta, methods=models, k_folds=0)
+        print('\tSaving PM C1 test set...')
         format_ppi_data(filename + '_pm_test_c1', test_c1, c1_fasta, methods=models, k_folds=0)
-        format_ppi_data( filename + '_pm_test_c2', test_c2, c2_fasta, methods=models, k_folds=0)
+        print('\tSaving PM C2 test set...')
+        format_ppi_data(filename + '_pm_test_c2', test_c2, c2_fasta, methods=models, k_folds=0)
+        print('\tSaving PM C3 test set...')
         format_ppi_data(filename + '_pm_test_c3', test_c3, c3_fasta, methods=models, k_folds=0)
+        
 
 def format_ppi_data(filename, df_ppi, df_fasta, methods=[], k_folds=0):
     ppi = df_ppi.copy()
@@ -797,7 +810,13 @@ def format_ppi_data(filename, df_ppi, df_fasta, methods=[], k_folds=0):
         elif m.lower() == 'dppi':
             file, df, seq =convert_dppi(filename, ppi, fasta, save=True)
             create_cv_subsets(file, df, seq, k_splits=k_folds)
-        elif m.lower() not in methods:
+        elif m.lower() not in methods:        train.reset_index(drop=True, inplace=True)
+        test_c1.reset_index(drop=True, inplace=True)
+        test_c2.reset_index(drop=True, inplace=True)
+        test_c3.reset_index(drop=True, inplace=True)
+        c1_fasta.reset_index(drop=True, inplace=True)
+        c2_fasta.reset_index(drop=True, inplace=True)
+        c3_fasta.reset_index(drop=True, inplace=True)
             print('\t%s data formatting is not available\n'%m)
         
 def convert_pipr(file, df_ppi, df_fasta, save=False):
@@ -882,24 +901,23 @@ def convert_dppi(file, df_ppi, df_fasta, save=False):
     fasta_dppi = df_fasta.copy()
     filename = file + '_DPPI'
     print("\tFormatting dataset for DPPI...")
-    # DATA.csv
     if save:
+        # DATA.csv
         ppi_dppi.to_csv(SAVE_LOCATION + 'DPPI_DATA/' + filename + '.csv', index=False, header=None)
-    # DATA.node
-    proteins = pd.DataFrame(ppi_dppi[ppi_dppi.columns[0]].append(ppi_dppi[ppi_dppi.columns[1]]).reset_index(drop=True).unique())
-    if save:
+        # DATA.node
+        proteins = pd.DataFrame(ppi_dppi[ppi_dppi.columns[0]].append(ppi_dppi[ppi_dppi.columns[1]]).reset_index(drop=True).unique())
         proteins.to_csv(SAVE_LOCATION + 'DPPI_DATA/' + filename + '.node', sep='\n', index=False, header=False)
-    # DATA/ protein fasta files ***NOTE: BLAST still required for all protein fasta files to get PSSM (replace .txt)***
-    if save:
+        # DATA/ protein fasta files ***NOTE: BLAST still required for all protein fasta files to get PSSM (replace .txt)***
         if not os.path.exists(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/'):
             os.mkdir(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/')
-    fasta_dppi[fasta_dppi.columns[-1]] = fasta_dppi[fasta_dppi.columns[0]] + '\n' + fasta_dppi[fasta_dppi.columns[-1]]
-    fasta_dppi[fasta_dppi.columns[0]] = fasta_dppi[fasta_dppi.columns[0]].str.replace('>', '')
-    if save:
+        fasta_dppi[fasta_dppi.columns[-1]] = fasta_dppi[fasta_dppi.columns[0]] + '\n' + fasta_dppi[fasta_dppi.columns[-1]]
+        fasta_dppi[fasta_dppi.columns[0]] = fasta_dppi[fasta_dppi.columns[0]].str.replace('>', '')
         for p in range(0, fasta_dppi.shape[0]):
-            f = open(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/' + str(fasta_dppi[fasta_dppi.columns[0]][p]) + '.txt', 'w')
-            f.write(fasta_dppi[fasta_dppi.columns[-1]][p])
-            f.close()
+            with open(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/' + str(fasta_dppi[fasta_dppi.columns[0]][p]) + '.txt', 'w') as f:
+                f.write(fasta_dppi[fasta_dppi.columns[-1]][p])
+    else:
+        fasta_dppi[fasta_dppi.columns[-1]] = fasta_dppi[fasta_dppi.columns[0]] + '\n' + fasta_dppi[fasta_dppi.columns[-1]]
+        fasta_dppi[fasta_dppi.columns[0]] = fasta_dppi[fasta_dppi.columns[0]].str.replace('>', '')
     
     return filename, ppi_dppi, fasta_dppi
     
