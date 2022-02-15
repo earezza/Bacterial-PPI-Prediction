@@ -775,24 +775,24 @@ def save_ppi_data(save_location, filename, df_pos, df_neg, df_fasta, models=[], 
         c3_fasta.reset_index(drop=True, inplace=True)
         
         # Save in save_location
-        train.to_csv(pm_save_location + filename + '_pm%s_train'%i + '_interactions.tsv', sep='\t', header=None, index=False)
-        fasta.to_csv(pm_save_location + filename + '_pm%s_train'%i + '_sequences.fasta', sep='\n', header=None, index=False)
-        test_c1.to_csv(pm_save_location + filename + '_pm%s_test_c1'%i + '_interactions.tsv', sep='\t', header=None, index=False)
-        test_c2.to_csv(pm_save_location + filename + '_pm%s_test_c2'%i + '_interactions.tsv', sep='\t', header=None, index=False)
-        test_c3.to_csv(pm_save_location + filename + '_pm%s_test_c3'%i + '_interactions.tsv', sep='\t', header=None, index=False)
-        c1_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c1'%i + '_sequences.fasta', sep='\n', header=None, index=False)
-        c2_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c2'%i + '_sequences.fasta', sep='\n', header=None, index=False)
-        c3_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c3'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        train.to_csv(pm_save_location + filename + '_PM%s_train'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        fasta.to_csv(pm_save_location + filename + '_PM%s_train'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        test_c1.to_csv(pm_save_location + filename + '_PM%s_test_c1'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c2.to_csv(pm_save_location + filename + '_PM%s_test_c2'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c3.to_csv(pm_save_location + filename + '_PM%s_test_c3'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        c1_fasta.to_csv(pm_save_location + filename + '_PM%s_test_c1'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        c2_fasta.to_csv(pm_save_location + filename + '_PM%s_test_c2'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        c3_fasta.to_csv(pm_save_location + filename + '_PM%s_test_c3'%i + '_sequences.fasta', sep='\n', header=None, index=False)
         
         # Save formatted for PPI prediction methods
         print('\tSaving PM train set %s...'%i)
-        format_ppi_data(pm_save_location, filename + '_pm%s_train'%i, train, fasta, methods=models, k_folds=0)
+        format_ppi_data(pm_save_location, filename + '_PM%s_train'%i, train, fasta, methods=models, k_folds=0)
         print('\tSaving PM C1 test set %s...'%i)
-        format_ppi_data(pm_save_location, filename + '_pm%s_test_c1'%i, test_c1, c1_fasta, methods=models, k_folds=0)
+        format_ppi_data(pm_save_location, filename + '_PM%s_test_c1'%i, test_c1, c1_fasta, methods=models, k_folds=0)
         print('\tSaving PM C2 test set %s...'%i)
-        format_ppi_data(pm_save_location, filename + '_pm%s_test_c2'%i, test_c2, c2_fasta, methods=models, k_folds=0)
+        format_ppi_data(pm_save_location, filename + '_PM%s_test_c2'%i, test_c2, c2_fasta, methods=models, k_folds=0)
         print('\tSaving PM C3 test set %s...'%i)
-        format_ppi_data(pm_save_location, filename + '_pm%s_test_c3'%i, test_c3, c3_fasta, methods=models, k_folds=0)
+        format_ppi_data(pm_save_location, filename + '_PM%s_test_c3'%i, test_c3, c3_fasta, methods=models, k_folds=0)
         
 
 def format_ppi_data(location, filename, df_ppi, df_fasta, methods=[], k_folds=0):
