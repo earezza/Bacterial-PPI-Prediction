@@ -75,7 +75,7 @@ Description:
                     5 (DEFAULT): saves data subsets under CV_SET/ including formatted data as per -m option
                     0 or 1: does not create k-fold subsets
                 -a <flag> generates all-to-all PPIs, positively labelled, for proteins in the final dataset (BE MINDFUL OF HARDDRIVE/STORAGE)
-                -pm <flag> creates Park&Marcotte sets from final dataset for evaluations, default is False)
+                -pm <int> creates number of Park&Marcotte sets from final dataset for evaluations, default is 0)
                 
 @author: Eric Arezza
 Last Updated: August 30 2021
@@ -113,6 +113,7 @@ import pandas as pd
 import numpy as np
 import urllib.parse
 import urllib.request
+import math
 from io import StringIO
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from itertools import combinations_with_replacement
@@ -141,7 +142,7 @@ parser.add_argument('-m', '--models', help='Model for dataset formatting',
                     default=[], type=str, nargs='+')
 parser.add_argument('-k', '--kfolds', help='Number of K-Fold splits of data, 0 or 1 produces no subsets (default 5)', type=int, default=5)
 parser.add_argument('-a', '--all_to_all', help='Flag to generate all-to-all PPIs for proteins in the final dataset', action='store_true')
-parser.add_argument('-pm', '--park_marcotte', help='Flag to create Park & Marcotte sets from final datasets (default false)', action='store_true')
+parser.add_argument('-pm', '--park_marcotte', help='Number of Park & Marcotte sets to create from final datasets (default 0)', type=int, default=0)
 args = parser.parse_args()
 
 if args.name == None:
@@ -149,7 +150,6 @@ if args.name == None:
     FILENAME = name + '_' + '-'.join(args.file.split('/')[-1].split('-')[-1].replace('.', '_').split('_')[:-2])
 else:
     FILENAME = args.name
-SAVE_LOCATION = args.results
 
 # HPIDB columns used
 TAB_COLS = [
@@ -724,7 +724,7 @@ def get_protein_locations(proteins):
     return df_uniprot
 
 # ======================= FUNCTIONS FOR STEP 4 =======================
-def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_to_all=False, park_marcotte=False):
+def save_ppi_data(save_location, filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_to_all=False, park_marcotte=0):
     pos = df_pos.copy()
     neg = df_neg.copy()
     fasta = df_fasta.copy()
@@ -736,12 +736,12 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
     neg = neg.sort_values(by=[neg.columns[0], neg.columns[1]], ignore_index=True)
     df = pos.append(neg, ignore_index=True)
     
-    # Save in SAVE_LOCATION
-    df.to_csv(SAVE_LOCATION + filename + '_interactions.tsv', sep='\t', header=None, index=False)
-    fasta.to_csv(SAVE_LOCATION + filename + '_sequences.fasta', sep='\n', header=None, index=False)
+    # Save in save_location
+    df.to_csv(save_location + filename + '_interactions.tsv', sep='\t', header=None, index=False)
+    fasta.to_csv(save_location + filename + '_sequences.fasta', sep='\n', header=None, index=False)
     
     # Format for PPI prediction methods and save
-    format_ppi_data(filename, df, fasta, methods=models, k_folds=kfolds)
+    format_ppi_data(save_location, filename, df, fasta, methods=models, k_folds=kfolds)
     
     # Save all-to-all PPIs
     if all_to_all:
@@ -751,16 +751,21 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
         df_all.insert(df_all.shape[1], df_all.shape[1], np.ones(df_all.shape[0], dtype=int))
         df_all = df_all.sort_values(by=[df_all.columns[0], df_all.columns[1]], ignore_index=True)
         filename = filename + '_all'
-        df_all.to_csv(SAVE_LOCATION + filename + '_interactions.tsv', sep='\t', header=None, index=False)
-        format_ppi_data(filename, df_all, fasta, methods=models, k_folds=0)
-        
+        df_all.to_csv(save_location + filename + '_interactions.tsv', sep='\t', header=None, index=False)
+        format_ppi_data(save_location, filename, df_all, fasta, methods=models, k_folds=0)
+    
+    if park_marcotte > 0:
+        pm_save_location = save_location + 'PARK_MARCOTTE/'
+        if not os.path.exists(save_location + 'PARK_MARCOTTE/'):
+                os.mkdir(save_location + 'PARK_MARCOTTE/')
     # Create and save Park & Marcotte sets
-    if park_marcotte:
-        print('Saving Park & Marcotte sets...')
+    for i in range(park_marcotte):
+        
+        print('\nSaving Park & Marcotte set %s...'%i)
         train, test_c1, test_c2, test_c3 = park_marcotte_subsets(df, train_size=0.7)
-        c1_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c1[test_c1.columns[0]].append(test_c1[test_c1.columns[1]]).unique())]
-        c2_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c2[test_c2.columns[0]].append(test_c2[test_c2.columns[1]]).unique())]
-        c3_fasta = fasta[fasta[fasta.columns[0]].str.replace('>','').isin(test_c3[test_c3.columns[0]].append(test_c3[test_c3.columns[1]]).unique())]
+        c1_fasta = fasta[fasta[fasta.columns[0]].str.replace('>', '').isin(test_c1[test_c1.columns[0]].append(test_c1[test_c1.columns[1]]).unique())]
+        c2_fasta = fasta[fasta[fasta.columns[0]].str.replace('>', '').isin(test_c2[test_c2.columns[0]].append(test_c2[test_c2.columns[1]]).unique())]
+        c3_fasta = fasta[fasta[fasta.columns[0]].str.replace('>', '').isin(test_c3[test_c3.columns[0]].append(test_c3[test_c3.columns[1]]).unique())]
         train.reset_index(drop=True, inplace=True)
         test_c1.reset_index(drop=True, inplace=True)
         test_c2.reset_index(drop=True, inplace=True)
@@ -769,76 +774,69 @@ def save_ppi_data(filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_t
         c2_fasta.reset_index(drop=True, inplace=True)
         c3_fasta.reset_index(drop=True, inplace=True)
         
-        # Save in SAVE_LOCATION
-        train.to_csv(SAVE_LOCATION + filename + '_pm_train' + '_interactions.tsv', sep='\t', header=None, index=False)
-        fasta.to_csv(SAVE_LOCATION + filename + '_pm_train' + '_sequences.fasta', sep='\n', header=None, index=False)
-        test_c1.to_csv(SAVE_LOCATION + filename + '_pm_test_c1' + '_interactions.tsv', sep='\t', header=None, index=False)
-        test_c2.to_csv(SAVE_LOCATION + filename + '_pm_test_c2' + '_interactions.tsv', sep='\t', header=None, index=False)
-        test_c3.to_csv(SAVE_LOCATION + filename + '_pm_test_c3' + '_interactions.tsv', sep='\t', header=None, index=False)
-        c1_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c1' + '_sequences.fasta', sep='\n', header=None, index=False)
-        c2_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c2' + '_sequences.fasta', sep='\n', header=None, index=False)
-        c3_fasta.to_csv(SAVE_LOCATION + filename + '_pm_test_c3' + '_sequences.fasta', sep='\n', header=None, index=False)
+        # Save in save_location
+        train.to_csv(pm_save_location + filename + '_pm%s_train'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        fasta.to_csv(pm_save_location + filename + '_pm%s_train'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        test_c1.to_csv(pm_save_location + filename + '_pm%s_test_c1'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c2.to_csv(pm_save_location + filename + '_pm%s_test_c2'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        test_c3.to_csv(pm_save_location + filename + '_pm%s_test_c3'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        c1_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c1'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        c2_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c2'%i + '_sequences.fasta', sep='\n', header=None, index=False)
+        c3_fasta.to_csv(pm_save_location + filename + '_pm%s_test_c3'%i + '_sequences.fasta', sep='\n', header=None, index=False)
         
         # Save formatted for PPI prediction methods
-        print('\tSaving PM train set...')
-        format_ppi_data(filename + '_pm_train', train, fasta, methods=models, k_folds=0)
-        print('\tSaving PM C1 test set...')
-        format_ppi_data(filename + '_pm_test_c1', test_c1, c1_fasta, methods=models, k_folds=0)
-        print('\tSaving PM C2 test set...')
-        format_ppi_data(filename + '_pm_test_c2', test_c2, c2_fasta, methods=models, k_folds=0)
-        print('\tSaving PM C3 test set...')
-        format_ppi_data(filename + '_pm_test_c3', test_c3, c3_fasta, methods=models, k_folds=0)
+        print('\tSaving PM train set %s...'%i)
+        format_ppi_data(pm_save_location, filename + '_pm%s_train'%i, train, fasta, methods=models, k_folds=0)
+        print('\tSaving PM C1 test set %s...'%i)
+        format_ppi_data(pm_save_location, filename + '_pm%s_test_c1'%i, test_c1, c1_fasta, methods=models, k_folds=0)
+        print('\tSaving PM C2 test set %s...'%i)
+        format_ppi_data(pm_save_location, filename + '_pm%s_test_c2'%i, test_c2, c2_fasta, methods=models, k_folds=0)
+        print('\tSaving PM C3 test set %s...'%i)
+        format_ppi_data(pm_save_location, filename + '_pm%s_test_c3'%i, test_c3, c3_fasta, methods=models, k_folds=0)
         
 
-def format_ppi_data(filename, df_ppi, df_fasta, methods=[], k_folds=0):
+def format_ppi_data(location, filename, df_ppi, df_fasta, methods=[], k_folds=0):
     ppi = df_ppi.copy()
     fasta = df_fasta.copy()
 
-    create_cv_subsets(filename, ppi, fasta, k_splits=k_folds)
-    
+    create_cv_subsets(location, filename, ppi, fasta, k_splits=k_folds)
     # Format data as per model input
     for m in methods:
         if m.lower() == 'pipr':
-            file, df, seq = convert_pipr(filename, ppi, fasta, save=True)
-            create_cv_subsets(file, df, seq, k_splits=k_folds)
-        elif m.lower() == 'sprint':
-            file, df, seq = convert_sprint(filename, ppi, fasta, save=True)
-            create_cv_subsets(file, df, seq, k_splits=k_folds)
-        elif m.lower() == 'deepfe':
-            file, df, seq =convert_deepfe(filename, ppi, fasta, save=True)
-            create_cv_subsets(file, df, seq, k_splits=k_folds)
-        elif m.lower() == 'dppi':
-            file, df, seq =convert_dppi(filename, ppi, fasta, save=True)
-            create_cv_subsets(file, df, seq, k_splits=k_folds)
-        elif m.lower() not in methods:        train.reset_index(drop=True, inplace=True)
-        test_c1.reset_index(drop=True, inplace=True)
-        test_c2.reset_index(drop=True, inplace=True)
-        test_c3.reset_index(drop=True, inplace=True)
-        c1_fasta.reset_index(drop=True, inplace=True)
-        c2_fasta.reset_index(drop=True, inplace=True)
-        c3_fasta.reset_index(drop=True, inplace=True)
+            file, df, seq = convert_pipr(location, filename, ppi, fasta, save=True)
+            create_cv_subsets(location, file, df, seq, k_splits=k_folds)
+        if m.lower() == 'sprint':
+            file, df, seq = convert_sprint(location, filename, ppi, fasta, save=True)
+            create_cv_subsets(location, file, df, seq, k_splits=k_folds)
+        if m.lower() == 'deepfe':
+            file, df, seq = convert_deepfe(location, filename, ppi, fasta, save=True)
+            create_cv_subsets(location, file, df, seq, k_splits=k_folds)
+        if m.lower() == 'dppi':
+            file, df, seq = convert_dppi(location, filename, ppi, fasta, save=True)
+            create_cv_subsets(location, file, df, seq, k_splits=k_folds)
+        if m.lower() not in methods:
             print('\t%s data formatting is not available\n'%m)
         
-def convert_pipr(file, df_ppi, df_fasta, save=False):
+def convert_pipr(save_location, file, df_ppi, df_fasta, save=False):
     if save:
-        if not os.path.exists(SAVE_LOCATION + 'PIPR_DATA/'):
-            os.mkdir(SAVE_LOCATION + 'PIPR_DATA/')
+        if not os.path.exists(save_location + 'PIPR_DATA/'):
+            os.mkdir(save_location + 'PIPR_DATA/')
     ppi_pipr = df_ppi.copy()
     fasta_pipr = df_fasta.copy()
     filename = file + '_PIPR'
     print("\tFormatting dataset for PIPR...")
     ppi_pipr.columns = ['v1', 'v2', 'label']
     if save:
-        ppi_pipr.to_csv(SAVE_LOCATION + 'PIPR_DATA/' + filename + '_interactions.tsv', sep='\t', index=False)
+        ppi_pipr.to_csv(save_location + 'PIPR_DATA/' + filename + '_interactions.tsv', sep='\t', index=False)
         fasta_pipr[fasta_pipr.columns[0]] = fasta_pipr[fasta_pipr.columns[0]].str.replace('>', '')
-        fasta_pipr.to_csv(SAVE_LOCATION + 'PIPR_DATA/' + filename + '_sequences.fasta', sep='\t', index=False, header=False)
+        fasta_pipr.to_csv(save_location + 'PIPR_DATA/' + filename + '_sequences.fasta', sep='\t', index=False, header=False)
     
     return filename, ppi_pipr, fasta_pipr
     
-def convert_sprint(file, df_ppi, df_fasta, save=False):
+def convert_sprint(save_location, file, df_ppi, df_fasta, save=False):
     if save:
-        if not os.path.exists(SAVE_LOCATION + 'SPRINT_DATA/'):
-            os.mkdir(SAVE_LOCATION + 'SPRINT_DATA/')
+        if not os.path.exists(save_location + 'SPRINT_DATA/'):
+            os.mkdir(save_location + 'SPRINT_DATA/')
     ppi_sprint = df_ppi.copy()
     fasta_sprint = df_fasta.copy()
     filename = file + '_SPRINT'
@@ -846,19 +844,19 @@ def convert_sprint(file, df_ppi, df_fasta, save=False):
     pos = ppi_sprint[ppi_sprint[ppi_sprint.columns[-1]] == 1]
     neg = ppi_sprint[ppi_sprint[ppi_sprint.columns[-1]] == 0]
     if save:
-        pos.to_csv(SAVE_LOCATION + 'SPRINT_DATA/' + filename + '_pos_interactions.txt', columns=list(pos.columns[:2]), sep=' ', index=False, header=False)
+        pos.to_csv(save_location + 'SPRINT_DATA/' + filename + '_pos_interactions.txt', columns=list(pos.columns[:2]), sep=' ', index=False, header=False)
         if neg.empty != True:
-            neg.to_csv(SAVE_LOCATION + 'SPRINT_DATA/' + filename + '_neg_interactions.txt', columns=list(neg.columns[:2]), sep=' ', index=False, header=False)
-        fasta_sprint.to_csv(SAVE_LOCATION + 'SPRINT_DATA/' + filename + '_sequences.fasta', sep='\n', index=False, header=False)
+            neg.to_csv(save_location + 'SPRINT_DATA/' + filename + '_neg_interactions.txt', columns=list(neg.columns[:2]), sep=' ', index=False, header=False)
+        fasta_sprint.to_csv(save_location + 'SPRINT_DATA/' + filename + '_sequences.fasta', sep='\n', index=False, header=False)
     
     return filename, ppi_sprint, fasta_sprint
         
-def convert_deepfe(file, df_ppi, df_fasta, save=False):
+def convert_deepfe(save_location, file, df_ppi, df_fasta, save=False):
     if save:
-        if not os.path.exists(SAVE_LOCATION + 'DEEPFE_DATA/'):
-            os.mkdir(SAVE_LOCATION + 'DEEPFE_DATA/')
-        if not os.path.exists(SAVE_LOCATION + 'DEEPFE_DATA/' + file + '_DEEPFE/'):
-            os.mkdir(SAVE_LOCATION + 'DEEPFE_DATA/' + file + '_DEEPFE/')
+        if not os.path.exists(save_location + 'DEEPFE_DATA/'):
+            os.mkdir(save_location + 'DEEPFE_DATA/')
+        if not os.path.exists(save_location + 'DEEPFE_DATA/' + file + '_DEEPFE/'):
+            os.mkdir(save_location + 'DEEPFE_DATA/' + file + '_DEEPFE/')
     ppi_deepfe = df_ppi.copy()
     fasta_deepfe = df_fasta.copy()
     filename = file + '_DEEPFE'
@@ -880,11 +878,11 @@ def convert_deepfe(file, df_ppi, df_fasta, save=False):
 
     # Write to files
     if save:
-        posA.to_csv(SAVE_LOCATION + 'DEEPFE_DATA/' + filename + '/' + filename + '_pos_ProteinA.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-        posB.to_csv(SAVE_LOCATION + 'DEEPFE_DATA/' + filename + '/' + filename + '_pos_ProteinB.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+        posA.to_csv(save_location + 'DEEPFE_DATA/' + filename + '/' + filename + '_pos_ProteinA.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+        posB.to_csv(save_location + 'DEEPFE_DATA/' + filename + '/' + filename + '_pos_ProteinB.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
         if negA.empty != True and negB.empty != True:
-            negA.to_csv(SAVE_LOCATION + 'DEEPFE_DATA/' + filename + '/' + filename + '_neg_ProteinA.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-            negB.to_csv(SAVE_LOCATION + 'DEEPFE_DATA/' + filename + '/' + filename + '_neg_ProteinB.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+            negA.to_csv(save_location + 'DEEPFE_DATA/' + filename + '/' + filename + '_neg_ProteinA.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+            negB.to_csv(save_location + 'DEEPFE_DATA/' + filename + '/' + filename + '_neg_ProteinB.fasta', sep='\n', index=False, header=False, quoting=csv.QUOTE_NONE, escapechar=" ")
 
     pos = pd.DataFrame(data={0: posA, 1: posB, 2: np.ones(posA.shape, dtype=int)})
     neg = pd.DataFrame(data={0: negA, 1: negB, 2: np.zeros(negA.shape, dtype=int)})
@@ -893,27 +891,27 @@ def convert_deepfe(file, df_ppi, df_fasta, save=False):
         
     return filename, df_deepfe, df_fasta_deepfe
 
-def convert_dppi(file, df_ppi, df_fasta, save=False):
+def convert_dppi(save_location, file, df_ppi, df_fasta, save=False):
     if save:
-        if not os.path.exists(SAVE_LOCATION + 'DPPI_DATA/'):
-            os.mkdir(SAVE_LOCATION + 'DPPI_DATA/')
+        if not os.path.exists(save_location + 'DPPI_DATA/'):
+            os.mkdir(save_location + 'DPPI_DATA/')
     ppi_dppi = df_ppi.copy()
     fasta_dppi = df_fasta.copy()
     filename = file + '_DPPI'
     print("\tFormatting dataset for DPPI...")
     if save:
         # DATA.csv
-        ppi_dppi.to_csv(SAVE_LOCATION + 'DPPI_DATA/' + filename + '.csv', index=False, header=None)
+        ppi_dppi.to_csv(save_location + 'DPPI_DATA/' + filename + '.csv', index=False, header=None)
         # DATA.node
         proteins = pd.DataFrame(ppi_dppi[ppi_dppi.columns[0]].append(ppi_dppi[ppi_dppi.columns[1]]).reset_index(drop=True).unique())
-        proteins.to_csv(SAVE_LOCATION + 'DPPI_DATA/' + filename + '.node', sep='\n', index=False, header=False)
+        proteins.to_csv(save_location + 'DPPI_DATA/' + filename + '.node', sep='\n', index=False, header=False)
         # DATA/ protein fasta files ***NOTE: BLAST still required for all protein fasta files to get PSSM (replace .txt)***
-        if not os.path.exists(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/'):
-            os.mkdir(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/')
+        if not os.path.exists(save_location + 'DPPI_DATA/' + filename + '/'):
+            os.mkdir(save_location + 'DPPI_DATA/' + filename + '/')
         fasta_dppi[fasta_dppi.columns[-1]] = fasta_dppi[fasta_dppi.columns[0]] + '\n' + fasta_dppi[fasta_dppi.columns[-1]]
         fasta_dppi[fasta_dppi.columns[0]] = fasta_dppi[fasta_dppi.columns[0]].str.replace('>', '')
         for p in range(0, fasta_dppi.shape[0]):
-            with open(SAVE_LOCATION + 'DPPI_DATA/' + filename + '/' + str(fasta_dppi[fasta_dppi.columns[0]][p]) + '.txt', 'w') as f:
+            with open(save_location + 'DPPI_DATA/' + filename + '/' + str(fasta_dppi[fasta_dppi.columns[0]][p]) + '.txt', 'w') as f:
                 f.write(fasta_dppi[fasta_dppi.columns[-1]][p])
     else:
         fasta_dppi[fasta_dppi.columns[-1]] = fasta_dppi[fasta_dppi.columns[0]] + '\n' + fasta_dppi[fasta_dppi.columns[-1]]
@@ -921,14 +919,13 @@ def convert_dppi(file, df_ppi, df_fasta, save=False):
     
     return filename, ppi_dppi, fasta_dppi
     
-def create_cv_subsets(filename, df_ppi, df_fasta, k_splits=5):
-    if k_splits == 0 or k_splits == 1:
-        return
-    if k_splits > df_ppi.shape[0]:
+def create_cv_subsets(save_location, filename, df_ppi, df_fasta, k_splits=5):
+    if k_splits == 0 or k_splits == 1 or k_splits > df_ppi.shape[0]:
+        #print('No CV subsets...k_splits = %s, PPIs = %s'%(k_splits, df_ppi.shape[0]))
         return
     
-    if not os.path.exists(SAVE_LOCATION + 'CV_SET/'):
-        os.mkdir(SAVE_LOCATION + 'CV_SET/')
+    if not os.path.exists(save_location + 'CV_SET/'):
+        os.mkdir(save_location + 'CV_SET/')
     
     df = df_ppi.copy()
     
@@ -968,36 +965,41 @@ def create_cv_subsets(filename, df_ppi, df_fasta, k_splits=5):
         else:
             cols = list(df.columns[:2])
             
-        if not os.path.exists(SAVE_LOCATION + 'CV_SET/' + filename + '/'):
-            os.mkdir(SAVE_LOCATION + 'CV_SET/' + filename + '/')
+        if not os.path.exists(save_location + 'CV_SET/' + filename + '/'):
+            os.mkdir(save_location + 'CV_SET/' + filename + '/')
         
         if separate_pos_neg:
             if 'DEEPFE' in filename:
-                if not os.path.exists(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/'):
-                    os.mkdir(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/')
-                if not os.path.exists(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/'):
-                    os.mkdir(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/')
-                pos_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/' + filename + 'pos_ProteinA_train-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                pos_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/' + filename + 'pos_ProteinB_train-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                pos_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/' + filename + 'pos_ProteinA_test-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                pos_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/' + filename + 'pos_ProteinB_test-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                neg_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) +  '/' +  filename + 'neg_ProteinA_train-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                neg_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) +  '/' +  filename + 'neg_ProteinB_train-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                neg_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) +  '/' +  filename + 'neg_ProteinA_test-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
-                neg_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) +  '/' +  filename + 'neg_ProteinB_test-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                if not os.path.exists(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/'):
+                    os.mkdir(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/')
+                if not os.path.exists(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/'):
+                    os.mkdir(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/')
+                pos_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/' + filename + 'pos_ProteinA_train-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                pos_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '/' + filename + 'pos_ProteinB_train-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                pos_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/' + filename + 'pos_ProteinA_test-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                pos_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '/' + filename + 'pos_ProteinB_test-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                neg_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) +  '/' +  filename + 'neg_ProteinA_train-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                neg_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) +  '/' +  filename + 'neg_ProteinB_train-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                neg_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) +  '/' +  filename + 'neg_ProteinA_test-' + str(fold) + extension, columns=[cols[0]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
+                neg_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) +  '/' +  filename + 'neg_ProteinB_test-' + str(fold) + extension, columns=[cols[1]], sep=sep, header=header, index=False, quoting=csv.QUOTE_NONE, escapechar=" ")
             else:
-                pos_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_pos_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
-                pos_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_pos_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
-                neg_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' +  filename + '_neg_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
-                neg_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' +  filename + '_neg_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+                pos_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_pos_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+                pos_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_pos_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+                neg_train.to_csv(save_location + 'CV_SET/' + filename + '/' +  filename + '_neg_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+                neg_test.to_csv(save_location + 'CV_SET/' + filename + '/' +  filename + '_neg_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
         else:
             df_train = pos_train.append(neg_train, ignore_index=True)
             df_test = pos_test.append(neg_test, ignore_index=True)
-            df_train.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
-            df_test.to_csv(SAVE_LOCATION + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+            df_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+            df_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + extension, columns=cols, sep=sep, header=header, index=False)
+            if 'DPPI' in filename:
+                prot_train = pd.DataFrame(df_train[df_train.columns[0]].append(df_train[df_train.columns[1]]).unique())
+                prot_test = pd.DataFrame(df_test[df_test.columns[0]].append(df_test[df_test.columns[1]]).unique())
+                prot_train.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_train-' + str(fold) + '.node', header=None, index=False)
+                prot_test.to_csv(save_location + 'CV_SET/' + filename + '/' + filename + '_test-' + str(fold) + '.node', header=None, index=False)
         fold += 1
     print("\tCross-validation subsets created!")
-    
+
 # Return training set,
 # c1_test (both proteins in pairs are found in training set),
 # c2_test (only 1 protein in pairs is found in training set),
@@ -1030,7 +1032,7 @@ def park_marcotte_subsets(df, train_size=0.7):
         c1 = test[(test[0].isin(proteins_both[0])) & (test[1].isin(proteins_both[0]))]
         c2 = test[(test[0].isin(proteins_both[0])) ^ (test[1].isin(proteins_both[0]))]
         c3 = test[(~test[0].isin(proteins_both[0])) & (~test[1].isin(proteins_both[0]))]
-        
+
         if c3.shape[0] > best_c3.shape[0]:
             best_c1 = c1.copy()
             best_c2 = c2.copy()
@@ -1039,20 +1041,91 @@ def park_marcotte_subsets(df, train_size=0.7):
         
     if best_c1.empty:
         print('No c1 test set')
+    else:
+        best_c1 = balance_pm_test_set(best_train, best_c1, 1)
     if best_c2.empty:
         print('No c2 test set')
+    else:
+        best_c2 = balance_pm_test_set(best_train, best_c2, 2)
     if best_c3.empty:
         print('No c3 test set')
+    else:
+        best_c3 = balance_pm_test_set(best_train, best_c3, 3)
         
     return best_train, best_c1, best_c2, best_c3
+
+def balance_pm_test_set(train, test, c_set):
+    df_train = train.copy()
+    df_test = test.copy()
+    # Return if already balanced
+    if len(df_test.value_counts(subset=[df_test.columns[-1]]).unique()) == 1 and len(df_test[df_test.columns[-1]].unique()) == 2:
+        return df_test
+    
+    # Get all proteins for sampling
+    train_proteins = df_train[df_train.columns[0]].append(df_train[df_train.columns[1]]).unique()
+    test_proteins = df_test[df_test.columns[0]].append(df_test[df_test.columns[1]]).unique()
+    
+    if len(test_proteins) < 2:
+        print('\tUnable to balance set')
+        return df_test
+    test_pos = df_test[df_test[df_test.columns[-1]] == 1].reset_index(drop=True)
+    test_neg = df_test[df_test[df_test.columns[-1]] == 0].reset_index(drop=True)
+    
+    # Return balanced data if more negatives than positives
+    if test_pos.shape[0] < test_neg.shape[0]:
+        test_neg = test_neg[0:test_pos.shape[0]]
+        df_test_balanced = test_pos.append(test_neg)
+        df_test_balanced.reset_index(drop=True, inplace=True)
+        return df_test_balanced
+    
+    # Max combinations possible
+    max_combos = len(test_proteins) + (math.factorial(len(test_proteins))/(2*(math.factorial(len(test_proteins) - 2))))
+    # If unable to generate enough combos to balance dataset, return
+    if max_combos - df_test.shape[0] < abs(test_pos.shape[0] - test_neg.shape[0]):
+        print('Not enough proteins to generate negatives and balance data.')
+        return df_test
+    
+    print('\tGenerating negatives for c%s'%c_set)
+    df_neg = test_neg.copy()
+    generator = np.random.default_rng()
+    while (df_neg.shape[0] < test_pos.shape[0]):
+        # Generate random pairs
+        df_neg = df_neg.append(pd.DataFrame(generator.choice(test_proteins, size=test_pos[test_pos.columns[:2]].shape)), ignore_index=True)
+        # Remove redundant and sort AB order of PPI pairs
+        df_neg = remove_redundant_pairs(df_neg)
+        df_neg_rev = pd.DataFrame({0: df_neg[1], 1: df_neg[0]})
+        
+        # Get pairs found in existing train and test PPIs and remove from negatives
+        in_sets = df_test.append(df_train).merge(df_neg)
+        in_sets_rev = df_test.append(df_train).merge(df_neg_rev)
+        in_sets_rev = pd.DataFrame({0: in_sets_rev[1], 1: in_sets_rev[0]})
+        in_sets = in_sets.append(in_sets_rev)
+        df_neg = df_neg.append(in_sets).drop_duplicates(keep=False)
+        df_neg[df_neg.columns[-1]] = 0
+        
+        if c_set == 1:
+            df_neg = df_neg[(df_neg[0].isin(train_proteins)) & (df_neg[1].isin(train_proteins))]
+        elif c_set == 2:
+            df_neg = df_neg[(df_neg[0].isin(train_proteins)) ^ (df_neg[1].isin(train_proteins))]
+        elif c_set == 3:
+            df_neg = df_neg[(~df_neg[0].isin(train_proteins)) & (~df_neg[1].isin(train_proteins))]
+    
+    # Trim negatives if larger than positives
+    if df_neg.shape[0] > (test_pos.shape[0] - test_neg.shape[0]):
+        df_neg = df_neg[0:(test_pos.shape[0] - test_neg.shape[0])]
+        
+    df_test_balanced = df_test.append(df_neg)
+    df_test_balanced.reset_index(drop=True, inplace=True)
+    
+    return df_test_balanced
 
 if __name__ == "__main__":
     # Display args
     print('\nPreprocessing HPIDB with the following args:\n', args)
     start = time.time()
     
-    if not os.path.exists(SAVE_LOCATION):
-        os.mkdir(SAVE_LOCATION)
+    if not os.path.exists(args.results):
+        os.mkdir(args.results)
     
     print('\nReading', args.file)
     df = pd.read_csv(args.file, sep='\t', usecols=HEADER, dtype=DTYPES)
@@ -1084,11 +1157,11 @@ if __name__ == "__main__":
                     filename = FILENAME + '_ID_' + str(organisms[0])
                     
                     # Save for CD-HIT to read and run
-                    df_intra_mapped.to_csv(SAVE_LOCATION + filename + '_interactions.tsv', columns=['Protein A', 'Protein B'], sep='\t', header=None, index=False)
-                    df_intra_fasta_mapped.to_csv(SAVE_LOCATION + filename + '_sequences.fasta', sep='\n', header=None, index=False)
+                    df_intra_mapped.to_csv(args.results + filename + '_interactions.tsv', columns=['Protein A', 'Protein B'], sep='\t', header=None, index=False)
+                    df_intra_fasta_mapped.to_csv(args.results + filename + '_sequences.fasta', sep='\n', header=None, index=False)
                     
                     print('\nRunning CD-HIT...')
-                    df_intra_fasta_reduced = run_cdhit(SAVE_LOCATION + filename + '_sequences.fasta', cdhit=args.cdhit, threshold=args.sequence_identity)
+                    df_intra_fasta_reduced = run_cdhit(args.results + filename + '_sequences.fasta', cdhit=args.cdhit, threshold=args.sequence_identity)
                     df_intra_pos, df_intra_fasta_final = remove_homology_ppi(df_intra_mapped, df_intra_fasta_reduced)
                     print('\t%s positive PPIs'%df_intra_pos.shape[0])
                     
@@ -1102,7 +1175,7 @@ if __name__ == "__main__":
                         df_intra_pos = df_intra_pos[df_intra_pos.columns[:2]]
                         df_intra_pos.columns = df_intra_neg.columns
                         df_intra_neg = df_intra_neg[df_intra_neg.columns[:2]]
-                        save_ppi_data(filename, df_intra_pos, df_intra_neg, df_intra_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
+                        save_ppi_data(args.results, filename, df_intra_pos, df_intra_neg, df_intra_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
                         print('\nTime %s seconds...'%round(time.time() - start, 2))
             except Exception as e:
                 print(e)
@@ -1132,11 +1205,11 @@ if __name__ == "__main__":
                 if df_inter_temp.empty or df_inter_fasta_temp.empty:
                     continue
             
-                df_inter_temp.to_csv(SAVE_LOCATION + filename + '_interactions.tsv', columns=['Protein A', 'Protein B'], sep='\t', header=None, index=False)
-                df_inter_fasta_temp.to_csv(SAVE_LOCATION + filename + '_sequences.fasta', sep='\n', header=None, index=False)
+                df_inter_temp.to_csv(args.results + filename + '_interactions.tsv', columns=['Protein A', 'Protein B'], sep='\t', header=None, index=False)
+                df_inter_fasta_temp.to_csv(args.results + filename + '_sequences.fasta', sep='\n', header=None, index=False)
                 
                 print('\nRunning CD-HIT...')
-                df_inter_fasta_reduced = run_cdhit(SAVE_LOCATION + filename + '_sequences.fasta', cdhit=args.cdhit, threshold=args.sequence_identity)
+                df_inter_fasta_reduced = run_cdhit(args.results + filename + '_sequences.fasta', cdhit=args.cdhit, threshold=args.sequence_identity)
                 df_inter_pos, df_inter_fasta_final = remove_homology_ppi(df_inter_temp, df_inter_fasta_reduced)
                 print('\t%s positive PPIs'%df_inter_pos.shape[0])
                 
@@ -1157,12 +1230,12 @@ if __name__ == "__main__":
                     df_inter_pos = df_inter_pos[df_inter_pos.columns[:2]]
                     df_inter_pos.columns = df_inter_neg.columns
                     df_inter_neg = df_inter_neg[df_inter_neg.columns[:2]]
-                    save_ppi_data(filename, df_inter_pos, df_inter_neg, df_inter_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
+                    save_ppi_data(args.results, filename, df_inter_pos, df_inter_neg, df_inter_fasta_final, models=args.models, kfolds=args.kfolds, all_to_all=args.all_to_all, park_marcotte=args.park_marcotte)
                     print('\nTime %s seconds...'%round(time.time() - start, 2))
             except Exception as e:
                 print('**********\n', e, '\n')
-                os.remove(SAVE_LOCATION + filename + '_interactions.tsv')
-                os.remove(SAVE_LOCATION + filename + '_sequences.fasta')
+                os.remove(args.results + filename + '_interactions.tsv')
+                os.remove(args.results + filename + '_sequences.fasta')
                 continue
     
     print('\nCompleted in %s seconds.'%round(time.time() - start, 2))
