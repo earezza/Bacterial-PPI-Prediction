@@ -3,12 +3,15 @@ Hashemifar S, Neyshabur B, Khan AA, Xu J. Predicting protein-protein interaction
  
 ___
 ## Usage:  
-
 e.g.  
-> **th dppi.lua -train dataTrain -test dataTest -device 1**  
+> **th dppi.lua -dataDir DIR_WITH_DATA/ -train dataTrain -test dataTest -device 1**  
+> or  
+> **th dppi.lua -dataDir DIR_WITH_DATA/ -pssmDir DIR_WITH_ALL_PSSMS/ -train dataTrain -test dataTest -device 1**  
 
-- First arg supplies name for training data, second arg supplies name for test data  
-- Each dataset should contain the following using the _same name_  
+- dataDir should contain the dataTrain/ dataTrain.node dataTrain.csv and dataTest/ dataTest.node dataTest.csv files  
+- pssmDir can be used if want to combine all PSSMs in dataTrain/ and dataTest/ into a single folder  
+___  
+Each dataset should contain the following using the _same filename_  
 e.g.  
 1. A **dataTrain.node** file containing a list of all protein IDs  
 > PROTEIN1  
@@ -38,9 +41,11 @@ Each file's contents contain the PSSM results table of a [BLAST](https://blast.n
     > SEQUENCE2  
     > ...etc...  
     3. Then either run the get_profiles.sh provided  
-    > ./get_profiles.sh  
+    > ./get_profiles.sh Profiles/ swissprot  
     
-   or perform the BLAST search otherwise  
+   and copy all PSSM files into dataset directory (e.g. dataTrain/) and remove any files with extensions  
+   or  
+   perform the BLAST search otherwise, doing the same    
    e.g.  
     > psiblast -db swissprot -evalue 0.001 -query Proteins/PROTEIN1 -out_ascii_pssm dataTrain/PROTEIN1 -out dataTrain/PROTEIN1-output_file -num_iterations 3  
    
@@ -52,9 +57,9 @@ Each file's contents contain the PSSM results table of a [BLAST](https://blast.n
    > -1	0	5	1	-3	0 ...  
    > ... ... ...  
    
-Repeat for test set.  
+**Repeat for test set.**  
 
-<i>Note: if train data and test data args are the same, a (default) 5-fold cross-validation will be performed on the provided data.</i>  
+<i>Note: if train data and test data args are the same, a k-fold (5-fold default) cross-validation will be performed on the provided data.</i>  
 
 ### Requirements:  
 lua  
