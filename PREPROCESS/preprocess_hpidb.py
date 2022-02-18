@@ -670,7 +670,9 @@ def generate_negative_interactions(df_pos, diff_locations=False):
             # Keep negative PPIs where proteins are not found in similar locations
             df_neg = df_neg[~pd.Series([any(group.loc[df_neg[df_neg.columns[0]][i]] == group.loc[df_neg[df_neg.columns[1]][i]]) for i in df_neg.index])].reset_index(drop=True)
             df_neg = remove_redundant_pairs(df_neg)
-
+        # Remove redundant and sort AB order of PPI pairs
+        df_neg = remove_redundant_pairs(df_neg)
+        
     # Trim negatives if larger than positives
     if df_neg.shape[0] > df.shape[0]:
         df_neg = df_neg[0:df.shape[0]]
@@ -1109,7 +1111,10 @@ def balance_pm_test_set(train, test, c_set):
             df_neg = df_neg[(df_neg[0].isin(train_proteins)) ^ (df_neg[1].isin(train_proteins))]
         elif c_set == 3:
             df_neg = df_neg[(~df_neg[0].isin(train_proteins)) & (~df_neg[1].isin(train_proteins))]
-    
+        
+        # Remove redundant and sort AB order of PPI pairs
+        df_neg = remove_redundant_pairs(df_neg)
+        
     # Trim negatives if larger than positives
     if df_neg.shape[0] > (test_pos.shape[0] - test_neg.shape[0]):
         df_neg = df_neg[0:(test_pos.shape[0] - test_neg.shape[0])]
