@@ -630,6 +630,12 @@ def save_ppi_data(save_location, filename, df_pos, df_neg, df_fasta, models=[], 
         pm_save_location = save_location + 'PARK_MARCOTTE/'
         if not os.path.exists(save_location + 'PARK_MARCOTTE/'):
                 os.mkdir(save_location + 'PARK_MARCOTTE/')
+    
+    if park_marcotte > 0:
+        pm_test_c1 = pd.DataFrame()
+        pm_test_c2 = pd.DataFrame()
+        pm_test_c3 = pd.DataFrame()
+        pm_train = pd.DataFrame()
     # Create and save Park & Marcotte sets
     for i in range(park_marcotte):
         
@@ -666,6 +672,20 @@ def save_ppi_data(save_location, filename, df_pos, df_neg, df_fasta, models=[], 
         print('\tSaving PM C3 test set %s...'%i)
         format_ppi_data(pm_save_location, filename + '_PM%s_test_c3'%i, test_c3, c3_fasta, methods=models, k_folds=0)
         
+        pm_test_c1 = pm_test_c1.append(test_c1)
+        pm_test_c2 = pm_test_c2.append(test_c2)
+        pm_test_c3 = pm_test_c3.append(test_c3)
+        pm_train = pm_train.append(train)
+        
+    if park_marcotte > 0:
+        pm_train = remove_redundant_pairs(pm_train)
+        pm_test_c1 = remove_redundant_pairs(pm_test_c1)
+        pm_test_c2 = remove_redundant_pairs(pm_test_c2)
+        pm_test_c3 = remove_redundant_pairs(pm_test_c3)
+        pm_train.to_csv(pm_save_location + filename + '_PM_total_train_interactions.tsv', sep='\t', header=None, index=False)
+        pm_test_c1.to_csv(pm_save_location + filename + '_PM_total_test_c1'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        pm_test_c2.to_csv(pm_save_location + filename + '_PM_total_test_c2'%i + '_interactions.tsv', sep='\t', header=None, index=False)
+        pm_test_c3.to_csv(pm_save_location + filename + '_PM_total_test_c3'%i + '_interactions.tsv', sep='\t', header=None, index=False)
 
 def format_ppi_data(location, filename, df_ppi, df_fasta, methods=[], k_folds=0):
     ppi = df_ppi.copy()
