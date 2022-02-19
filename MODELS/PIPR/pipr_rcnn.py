@@ -64,6 +64,7 @@ parser.add_argument('-l', '--label_index', help='Label index (int)', type=int, d
 parser.add_argument('-m', '--mbedding', help='Embedding (int), 0=embeddings/default_onehot.txt, 1=embeddings/string_vec5.txt, 2=embeddings/CTCoding_onehot.txt, 3=embeddings/vec7_CTC.txt', 
                     type=int, choices=[0,1,2,3], default=3)
 parser.add_argument('-d', '--dimensions', help='Hidden dimensions (int)', type=int, default=50)
+parser.add_argument('-b', '--batch_size', help='Batch size (int)', type=int, default=256)
 parser.add_argument('-e', '--epochs', help='Epochs (int)', type=int, default=100)
 parser.add_argument('-a', '--seq_size', help='Amino acids/sequence length (int)', type=int, default=2000)
 parser.add_argument('-save', '--saveModel', help='Save model', action='store_true', default=False)
@@ -360,7 +361,7 @@ if __name__ == "__main__":
         
     # Train and test model
     num_hit = num_total = num_pos = num_true_pos = num_false_pos = num_true_neg = num_false_neg = 0.
-    batch_size1 = 256
+    batch_size1 = args.batch_size
     cv = 0
     for train, test in train_test:
         
