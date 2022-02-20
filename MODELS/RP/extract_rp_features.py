@@ -76,8 +76,8 @@ class No_Knee(object):
 # If no elbow found, manually assign elbow to first rank PPI
 class No_Elbow(object):
     def __init__(self, scores):
-        self.elbow = scores.index.tolist()[0]
-        self.knee_y = scores.iloc[self.elbow][scores.columns[-1]]
+        self.knee = scores.index.tolist()[0]
+        self.knee_y = scores.iloc[self.knee][scores.columns[-1]]
         self.y = np.array(scores.copy()[scores.columns[-1]])
 
 class OneToAll(object):
@@ -158,7 +158,7 @@ class OneToAll(object):
         return score
     
     def get_relative_rank(self, protein):
-        return (self.get_rank(protein)+1)/len(self.ranks)
+        return (self.get_rank(protein))/len(self.ranks)
     
     def get_knee_elbow(self):
         return self.knee.y[self.knee.knee], self.elbow.y[self.elbow.elbow]
@@ -270,15 +270,15 @@ class RP_AB(object):
                    'FD_A_elbow', 'FD_B_elbow', 'FD_A_knee', 'FD_B_knee'
                    ]
         # RP features
-        rank_A_in_B = self.ProteinB.get_rank(self.ProteinA.ID) + 1
-        rank_B_in_A = self.ProteinA.get_rank(self.ProteinB.ID) + 1
+        rank_A_in_B = self.ProteinB.get_rank(self.ProteinA.ID)
+        rank_B_in_A = self.ProteinA.get_rank(self.ProteinB.ID)
         score_A_in_B = self.ProteinB.get_score(self.ProteinA.ID)
         score_B_in_A = self.ProteinA.get_score(self.ProteinB.ID)
-        narro = 1.0 / (rank_A_in_B * rank_B_in_A)
-        norro_A = 1.0 / (rank_A_in_B/len(self.ProteinB.proteins))
-        norro_B = 1.0 / (rank_B_in_A/len(self.ProteinA.proteins))
+        narro = 1.0 / ((rank_A_in_B+1) * (rank_B_in_A+1))
+        norro_A = 1.0 / ((rank_A_in_B+1)/len(self.ProteinB.proteins))
+        norro_B = 1.0 / ((rank_B_in_A+1)/len(self.ProteinA.proteins))
         norro = norro_A * norro_B
-        arro = 1.0 / (rank_A_in_B/len(self.ProteinB.proteins) * rank_B_in_A/len(self.ProteinA.proteins))
+        arro = 1.0 / ((rank_A_in_B+1)/len(self.ProteinB.proteins) * (rank_B_in_A+1)/len(self.ProteinA.proteins))
 
         # Rank and score of local cutoff (elbow)
         rank_local_cutoff_A_elbow = self.ProteinA.elbow.knee
@@ -376,7 +376,8 @@ def create_RP_dataset(predictions, labels):
     df = pd.DataFrame()
     for i in tqdm.tqdm(range(0, lab.shape[0]), total=lab.shape[0]):
         rp = RP_AB(pred, lab, lab.iloc[i][0], lab.iloc[i][1])
-        df = df.append(rp.get_rp_features(), ignore_index=True)
+        df = df.append(rp.get_rp_features())
+        df.reset_index(drop=True, inplace=True)
     print('\n\tTime:', round(time.time() - start, 2), 'seconds')
     lab.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
     df = df.merge(lab, on=['Protein_A', 'Protein_B'])
@@ -391,7 +392,8 @@ def create_RP_dataset_parallel(predictions, labels, processors=round(os.cpu_coun
     with multiprocessing.Pool(processors) as pool:
         df = list(tqdm.tqdm(pool.imap(get_rp, range(0, labels.shape[0])), total=labels.shape[0]))
 
-    df = pd.concat(df, ignore_index=True)
+    df = pd.concat(df)
+    df.reset_index(drop=True, inplace=True)
     LABELS.rename(columns={0: 'Protein_A', 1:'Protein_B', 2:'label'}, inplace=True)
     df = df.merge(LABELS, on=['Protein_A', 'Protein_B'])
     print('\n\tTime:', round(time.time() - start, 2), 'seconds')
@@ -438,7 +440,8 @@ def labels_verified(labels, predictions):
 
 def remove_redundant_pairs(df_ppi):
     df = df_ppi.copy()
-    df.sort_values(by=[df.columns[0], df.columns[1]], ignore_index=True, inplace=True)
+    df.sort_values(by=[df.columns[0], df.columns[1]], inplace=True)
+    df.reset_index(drop=True, inplace=True)
     # Get only unique PPIs (using set automatically sorts AB and BA such that they will all be AB)
     pairs = pd.DataFrame([set(p) for p in df[df.columns[:2]].values])
     # Fill in for self-interacting proteins
@@ -454,12 +457,14 @@ def remove_redundant_pairs(df_ppi):
         
         df_labelled = df.merge(df_unique, on=[df_unique.columns[0], df_unique.columns[1]])
         df_labelled = df_labelled.append(df.merge(df_unique_rev, on=[df_unique_rev.columns[0], df_unique_rev.columns[1]]))
-        df_labelled.sort_values(by=[df_labelled.columns[-1]], ascending=False, ignore_index=True, inplace=True)
+        df_labelled.sort_values(by=[df_labelled.columns[-1]], ascending=False, inplace=True)
+        df_labelled.reset_index(drop=True, inplace=True)
         df_labelled = df_labelled.drop_duplicates(subset=[df_labelled.columns[0], df_labelled.columns[1]])
         df_out = df_labelled.reset_index(drop=True)
     else:
         df_out = df_unique.copy()
-        df_out.sort_values(by=[df_out.columns[0], df_out.columns[1]], ignore_index=True, inplace=True)
+        df_out.sort_values(by=[df_out.columns[0], df_out.columns[1]], inplace=True)
+        df_out.reset_index(drop=True, inplace=True)
     
     return df_out
 
