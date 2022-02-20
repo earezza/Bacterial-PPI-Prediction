@@ -106,7 +106,7 @@ class OneToAll(object):
         else:
             try:
                 # Adjust sensitivity until knee found to avoid None value
-                for s in range(sens, 0, -1):
+                for s in range(sens, -1, -1):
                     self.knee = KneeLocator(self.scores.index.tolist(), self.scores[self.scores.columns[-1]], interp_method='polynomial', curve='concave', direction='decreasing', online=on, S=s, polynomial_degree=deg)
                     if self.knee.knee:
                         self.sensitivity=s
@@ -117,7 +117,7 @@ class OneToAll(object):
                     self.knee = No_Knee(self.scores)
             try:
                 # Adjust sensitivity until elbow found to avoid None value
-                for s in range(sens, 0, -1):
+                for s in range(sens, -1, -1):
                     self.elbow = KneeLocator(self.scores.index.tolist(), self.scores[self.scores.columns[-1]], interp_method='polynomial', curve='convex', direction='decreasing', online=on, S=s, polynomial_degree=deg)
                     if self.elbow.knee:
                         self.sensitivity=s
@@ -126,6 +126,16 @@ class OneToAll(object):
                 # If still no elbow found, manually assign elbow to first rank PPI
                 if self.elbow == None:
                     self.elbow = No_Elbow(self.scores)
+        if self.knee == None:
+            self.knee = No_Knee(self.scores)
+        if self.elbow == None:
+            self.elbow = No_Elbow(self.scores)
+        # Swap if poor elbow/knee detections
+        if self.knee.knee < self.elbow.knee:
+            temp = self.knee
+            self.knee = self.elbow
+            self.elbow = temp
+            del temp
         
     def describe(self):
         # Describe inputs
@@ -386,6 +396,7 @@ def create_RP_dataset(predictions, labels):
 # Running parallel processes to speed up RP feature extraction
 def get_rp(i):
     return RP_AB(PREDICTIONS, LABELS, LABELS.iloc[i][0], LABELS.iloc[i][1]).get_rp_features()
+
 def create_RP_dataset_parallel(predictions, labels, processors=round(os.cpu_count())):
     start = time.time()
 
