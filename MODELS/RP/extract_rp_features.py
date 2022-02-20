@@ -6,32 +6,18 @@ Description:
     RP objects can be created given an all-to-all .tsv file and labelled PPI .tsv file.
     
     RP_AB object supports:
+        RP_AB objects, One-to-All objects,
         Plotting one-to-all curves for a given protein ID.
         Plotting RP one-to-all curves for a given pair of protein IDs.
     
     Input arguements:
         -l: <str> path to labeled dataset to convert to RP dataset (.tsv)
-        -p: <str> path to directory containing all-to-all PPI prediction files
-        -t: <str> path to directory containing training PPI files (.tsv) (from cross-validations)
+        -p: <str> path to file containing all-to-all PPI predictions
         -r: <str> path to directory to save RP feature dataset
         -m: <float> Percent of available processors to use multiprocessing, default is 0 (no multiprocessing)
     
     Output files:
         A single .tsv file of RP features for each PPI found in given labelled pairs.
-        
-        NOT SUPPORTED YET:
-        If given a protein ID:
-            A single .png of the one-to-all curve for that protein ID.
-        If given a pair of Protein IDs:
-            A single .png of the RP one-to-all curve for those protein IDs.
-            
-    Note:
-        Arguments must be input such that the index of each PPI prediction file 
-        matches the index of each labelled PPI file.
-        
-        e.g. 
-        python get_rp_features.py -l labels.tsv -p PREDICTIONS/ -t CV_TRAINED/ -r RESULTS/
-        
     
 @author: Eric Arezza
 Last Updated: October 13, 2021
@@ -47,11 +33,10 @@ import time
 import tqdm as tqdm
 import multiprocessing
 
-describe_help = 'python get_rp_features.py -l labels.tsv -p PREDICTIONS/ -t CV_TRAINED/ -r RESULTS/'
+describe_help = 'python extract_rp_features.py -l labels.tsv -p predictions.tsv -r RESULTS/ -m 0.5'
 parser = argparse.ArgumentParser(description=describe_help)
 parser.add_argument('-l', '--labels', help='Path to labeled PPIs file to convert to RP dataset (.tsv)', type=str)
 parser.add_argument('-p', '--predictions', help='Path to directory with all-to-all PPI prediction files', type=str)
-parser.add_argument('-t', '--trained', help='Path to directory with training files used to get all-to-all predictions (for cross-validations)', type=str)
 parser.add_argument('-r', '--results', help='Path to directory to save new RP dataset', type=str, default=os.getcwd()+'/')
 parser.add_argument('-m', '--multiprocessing', help='Percent of processors to use for multiprocessing (default 0 = no multiprocessing)', type=float, default=0)
 args = parser.parse_args()
@@ -314,10 +299,10 @@ class RP_AB(object):
         # Fold differences (negative value indicates below local cutoff, positive value indicates above local cutoff)
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            fd_A_elbow = (self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_elbow) / score_local_cutoff_A_elbow if not np.isinf((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_elbow) / score_local_cutoff_A_elbow) else 0
-            fd_B_elbow = (self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_elbow) / score_local_cutoff_B_elbow if not np.isinf((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_elbow) / score_local_cutoff_B_elbow) else 0
-            fd_A_knee = (self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_knee) / score_local_cutoff_A_knee if not np.isinf((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_knee) / score_local_cutoff_A_knee) else 0
-            fd_B_knee = (self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_knee) / score_local_cutoff_B_knee if not np.isinf((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_knee) / score_local_cutoff_B_knee) else 0
+            fd_A_elbow = (self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_elbow) / score_local_cutoff_A_elbow if not np.isinf((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_elbow) / score_local_cutoff_A_elbow) and not np.isnan((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_elbow) / score_local_cutoff_A_elbow) else 0
+            fd_B_elbow = (self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_elbow) / score_local_cutoff_B_elbow if not np.isinf((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_elbow) / score_local_cutoff_B_elbow) and not np.isnan((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_elbow) / score_local_cutoff_B_elbow) else 0
+            fd_A_knee = (self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_knee) / score_local_cutoff_A_knee if not np.isinf((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_knee) / score_local_cutoff_A_knee) and not np.isnan((self.ProteinA.get_score(self.ProteinB.ID) - score_local_cutoff_A_knee) / score_local_cutoff_A_knee)  else 0
+            fd_B_knee = (self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_knee) / score_local_cutoff_B_knee if not np.isinf((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_knee) / score_local_cutoff_B_knee) and not np.isnan((self.ProteinB.get_score(self.ProteinA.ID) - score_local_cutoff_B_knee) / score_local_cutoff_B_knee) else 0
             
         rp_features = pd.DataFrame(np.array([[self.ProteinA.ID, self.ProteinB.ID,
                        rank_A_in_B, rank_B_in_A, score_A_in_B, score_B_in_A,
