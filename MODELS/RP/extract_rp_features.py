@@ -494,6 +494,7 @@ if __name__ == '__main__':
             rp = create_RP_dataset(predictions, labels)
         print('\t%s RP features extracted for %s PPIs'%(rp.shape[1] - 3, rp.shape[0]))
         save_name = 'RP_' + args.labels.split('/')[-1]
+        rp.replace(to_replace=np.nan, value=0, inplace=True)
         rp.to_csv(args.results + save_name, sep='\t', index=False)
         print('Saved and done.')
     else:

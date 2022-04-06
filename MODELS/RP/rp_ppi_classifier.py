@@ -3,7 +3,7 @@
 """
 Description:
     Performs PPI prediction using RP datasets.
-    RP datasets generated using rp_ppi.py based on PPI predictions from other models.
+    RP datasets generated using extract_rp_features.py based on PPI predictions from other models.
     
     Input arguements:
         -f: paths to files containing RP PPI datasets (.tsv) (cross-validation will be performed, otherwise input -train and -test)
@@ -28,9 +28,11 @@ import os, argparse, time
 import pandas as pd
 import numpy as np
 from sklearn import metrics
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+#from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+#import xgboost as xgb
 from lightgbm.sklearn import LGBMClassifier
-import xgboost as xgb
+from sklearn.svm import SVC
+from lightgbm import plot_importance
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -54,15 +56,62 @@ K_FOLDS = args.k_folds
 IMBALANCE = args.delta
 RATIO = '1:' + str(int((1/IMBALANCE) - 1))
 
-def recalculate_precision(df, precision, thresholds, ratio=IMBALANCE):
-    delta = 2*ratio - 1
+# Calculate estimate for prevalence-corrected precision on imbalanced data
+def recalculate_precision(df, precision, thresholds, d):
+    delta = 2*d - 1
     new_precision = precision.copy()
     for t in range(0, len(thresholds)):
-        tn, fp, fn, tp = metrics.confusion_matrix(df['Truth'], (df['Score'] >= thresholds[t]).astype(int)).ravel()
-        tp = tp*(1 + delta)
-        fp = fp*(1 - delta)
-        new_precision[t] = tp/(tp+fp)
+        tn, fp, fn, tp = metrics.confusion_matrix(df[1], (df[0] >= thresholds[t]).astype(int)).ravel()
+        lpp = tp/(tp+fn)
+        lnn = tn/(tn+fp)
+        if d != 0.5:
+            new_precision[t] = (lpp*(1 + delta)) / ( (lpp*(1 + delta)) + ((1 - lnn)*(1 - delta)) )
+        else:
+            new_precision[t] = (lpp)/(lpp + (1-lnn))
     return new_precision
+
+# Recalculate metrics for imbalanced classification where d is num_positives/(num_positives + num_negatives)
+def recalculate_metrics_to_imbalance(tp, tn, fp, fn, d):
+    delta = 2*d - 1
+    # recall and specificity are unchanged
+    lpp = tp/(tp+fn)
+    lnn = tn/(tn+fp)
+    if d != 0.5:
+        accuracy = lpp*((1 + delta)/2) + lnn*((1 - delta)/2)
+        precision = (lpp*(1 + delta)) / ( (lpp*(1 + delta)) + ((1 - lnn)*(1 - delta)) )
+        f1 = (2*lpp*(1 + delta)) / ( ((1+lpp)*(1+delta)) + ((1-lnn)*(1-delta)) )
+        mcc = (lpp+lnn-1) / np.sqrt((lpp + (1-lnn)*( (1-delta)/(1+delta) ) )*( lnn + (1-lpp)*( (1+delta)/(1-delta) ) ))
+    else:
+        accuracy = (lpp + lnn)/2
+        precision = (lpp)/(lpp + (1-lnn))
+        f1 = (2*lpp)/(2 + lpp - lnn)
+        mcc = (lpp + lnn - 1) / np.sqrt( (lpp + (1-lnn))*(lnn + (1-lpp)) )
+        
+    return round(accuracy, 5), round(precision, 5), round(lpp, 5), round(lnn, 5), round(f1, 5), round(mcc, 5)
+
+# Get labels for PPIs
+def get_matching_pairs(df_1, df_2):
+    # Get matches using PPI ordering of smaller df
+    if df_1.shape > df_2.shape:
+        df_test = df_1.copy()
+        df_train = df_2.copy()
+    else:
+        df_test = df_2.copy()
+        df_train = df_1.copy()
+    
+    # Include all PPIs where A-B is B-A
+    df_test_rev = df_test.copy()
+    df_test_rev[[df_test_rev.columns[0], df_test_rev.columns[1]]] = df_test_rev[[df_test_rev.columns[1], df_test_rev.columns[0]]]
+    df = df_test.append(df_test_rev)
+    df = df.drop_duplicates(subset=[df.columns[0], df.columns[1]])
+    df.reset_index(drop=True, inplace=True)
+    
+    # Merge to match all PPIs found between df
+    matches = df_train.merge(df, on=[df.columns[0], df.columns[1]])
+    matches = matches.drop_duplicates(subset=[df.columns[0], df.columns[1]])
+    matches.reset_index(drop=True, inplace=True)
+    # Returns as <ProteinA> <ProteinB> <label> <score>
+    return matches
 
 if __name__ == '__main__':
     
@@ -72,11 +121,15 @@ if __name__ == '__main__':
     # ================== FOR SINGLE TRAIN/TEST RUNS ==================
     if FILES == None and args.train != None and args.test != None:
         t_start = time.time()
+        output = args.name
         print('Training on %s\nTesting on %s\n'%(args.train.split('/')[-1], args.test.split('/')[-1]))
+        output += '\nTraining on %s\nTesting on %s\n'%(args.train.split('/')[-1], args.test.split('/')[-1])
         
         # Load data
         df_train = pd.read_csv(args.train, delim_whitespace=True)
+        df_train.replace(to_replace=np.nan, value=0, inplace=True)
         df_test = pd.read_csv(args.test, delim_whitespace=True)
+        df_test.replace(to_replace=np.nan, value=0, inplace=True)
         
         # Define data and labels
         pairs_train = np.array(df_train[df_train.columns[0:2]])
@@ -93,74 +146,116 @@ if __name__ == '__main__':
             save_name = args.name
             
         # Define classifier model and pipeline
-        #clf = RandomForestClassifier(random_state=13052021)
-        clf = LGBMClassifier(random_state=13052021, 
+        if args.cme:
+            clf = SVC(C=0.6,
+                      kernel='sigmoid',
+                      gamma='scale',
+                      probability=True,
+                      random_state=13052021,
+                      )
+        else:
+            clf = LGBMClassifier(random_state=13052021,
                              boosting_type='goss', 
-                             num_leaves=40, 
-                             learning_rate=0.15)
-        '''
-        clf = xgb.XGBClassifier(random_state=13052021, 
-                                use_label_encoder=False, 
-                                eval_metric='mlogloss')
-        '''
-        #pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
-        pipe = Pipeline([('scaler', StandardScaler()), ('lgbm', clf)])
+                             learning_rate=0.1, 
+                             num_leaves=50,
+                             max_depth=10, 
+                             min_data_in_leaf=50,
+                             n_estimators=150,
+                             path_smooth=0.1,
+                             )
+        
+        pipe = Pipeline([('scaler', StandardScaler()), ('metaclf', clf)])
         
         # Fit model with training data
         pipe.fit(X_train, y_train)
+        #clf.fit(X_train, y_train)
+        #var_imp_df = pd.DataFrame([df_train.columns, clf.feature_importances_]).T
+        #var_imp_df.sort_values(by=[1], ascending=False, inplace=True)
+        #plot_importance(clf.booster_)
         
         # Record PPI binary predictions
         pred = pipe.predict(X_test)
+        #pred = clf.predict(X_test)
         ppi_bin = pd.DataFrame(pairs_test, columns=[df_test.columns[0], df_test.columns[1]])
         ppi_bin.insert(2, 2, pred)
         
         # Record PPI prediction probabilities
         pred_probs = pipe.predict_proba(X_test)
+        #pred_probs = clf.predict_proba(X_test)
         ppi_probs = pd.DataFrame(np.append(pairs_test, pred_probs, axis=1), columns=[df_test.columns[0], df_test.columns[1], 2, 3])
         ppi_probs.drop(columns=[2], inplace=True)
         ppi_probs.to_csv(args.results + 'predictions_' + save_name + '.tsv', sep='\t', header=None, index=False)
         
+        # If only one class in labels (predicting unknowns)
+        if pd.Series(y_test).unique().shape[0] < 2:
+            print('No evaluation to be done.')
+            exit()
+        
         # Get performance metricss of binary evaluation (threshold=0.5)
         tn, fp, fn, tp = metrics.confusion_matrix(y_test, pred).ravel()
-        print('tp='+str(tp), 'fp='+str(fp), 'tn='+str(tn), 'fn='+str(fn))
+        print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
+        output += '\nTP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn)
         
-        accuracy = (tp + tn) / (tn + fp + fn + tp)
-        prec = tp / (tp + fp + 1e-06)
-        rec = tp / (tp + fn + 1e-06)
-        spec = tn / (tn + fp + 1e-06)
-        f1 = 2. * (prec * rec) / (prec + rec + 1e-06)
-        mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ** 0.5)
+        # For imbalanced classification metrics
+        if args.delta != 0.5:
+            accuracy, precision, recall, specificity, f1, mcc = recalculate_metrics_to_imbalance(tp, tn, fp, fn, args.delta)
+        else:
+            try:
+                accuracy = round((tp+tn)/(tp+fp+tn+fn), 5)
+            except ZeroDivisionError:
+                accuracy = np.nan
+            try:
+                precision = round(tp/(tp+fp), 5)
+            except ZeroDivisionError:
+                precision = np.nan
+            try:
+                recall = round(tp/(tp+fn), 5)
+            except ZeroDivisionError:
+                recall = np.nan
+            try:
+                specificity = round(tn/(tn+fp), 5)
+            except ZeroDivisionError:
+                specificity = np.nan
+            try:
+                f1 = round((2*tp)/(2*tp+fp+fn), 5)
+            except ZeroDivisionError:
+                f1 = np.nan
+            try:
+                mcc = round( ( ((tp*tn) - (fp*fn)) / np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)) ), 5)
+            except ZeroDivisionError:
+                mcc = np.nan
+        
+        print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
+        output += '\nAccuracy = ' + str(accuracy) + '\nPrecision = ' + str(precision) + '\nRecall = '+ str(recall) + '\nSpecificity = ' + str(specificity) + '\nF1 = ' + str(f1) + '\nMCC = ' + str(mcc)
         
         auc_roc = metrics.roc_auc_score(y_test, pred_probs[:, 1])
         auc_pr = metrics.average_precision_score(y_test, pred_probs[:, 1])
         fpr, tpr, __ = metrics.roc_curve(y_test, pred_probs[:, 1])
         
-        print('acc=' + str(round(accuracy, 4)), 'prec=' + str(round(prec, 4)), 'recall=' + str(round(rec, 4)), \
-              'spec=' + str(round(spec, 4)), 'f1=' + str(round(f1, 4)), 'mcc=' + str(round(mcc, 4)))
-                
-        # Get performance metricss for curve plotting
+        # Get performance metrics for curve plotting
         # Evaluate performance and adjust for hypothetical imbalance
         precision, recall, thresholds = metrics.precision_recall_curve(y_test, pred_probs[:, 1])
-        truth_score = pd.DataFrame(data={'Truth':y_test, 'Score':pred_probs[:, 1]})
-        precision = recalculate_precision(truth_score, precision, thresholds, ratio=IMBALANCE)
-        fpr, tpr, __ = metrics.roc_curve(y_test, pred_probs[:, 1])
-        if IMBALANCE == 0.5:
-            pr_auc = metrics.average_precision_score(y_test, pred_probs[:, 1])
+        df_pred = pd.DataFrame(data={1:y_test, 0:pred_probs[:, 1]})
+        
+        # Evaluate performance and adjust for hypothetical imbalance
+        precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
+        if args.delta != 0.5:
+            precision = recalculate_precision(df_pred, precision, thresholds, args.delta)
+        fpr, tpr, __ = metrics.roc_curve(df_pred[1], df_pred[0])
+        if args.delta == 0.5:
+            pr_auc = metrics.average_precision_score(df_pred[1], df_pred[0])
         else:
             pr_auc = metrics.auc(recall, precision)
-        roc_auc = metrics.roc_auc_score(y_test, pred_probs[:, 1])
+        roc_auc = metrics.roc_auc_score(df_pred[1], df_pred[0])
+        
         print('auc_roc=%.6f'%(roc_auc) + '\nauc_pr=%.6f'%(pr_auc))
-        
+        output += '\nAUC_ROC = %0.5f'%roc_auc + '\nAUC_PR = %0.5f\n'%pr_auc
         duration = time.time() - t_start
-        
-        results ='accuracy=%.4f'%(accuracy) + '\nprecision=%.4f'%(prec) + '\nrecall=%.4f'%(rec) + '\nspecificity=%.4f'%(spec) \
-                + '\nf1=%.4f'%(f1) + '\nmcc=%.4f'%(mcc) + '\nroc_auc=%.4f'%(roc_auc) + '\npr_auc=%.4f'%(pr_auc) \
-                + '\ntime(sec.)=%.2f'%(duration) + '\n'
-        print('----- Results -----\n' + results)
+        output += '\ntime(sec.)=%.2f'%(duration) + '\n'
         # Write results to file
         result_filename = args.results + 'results_' + save_name + '.txt'
         with open(result_filename, 'w') as fp:
-            fp.write(results)
+            fp.write(output)
         
         # Plot and save curves
         plt.figure
@@ -204,6 +299,7 @@ if __name__ == '__main__':
         for f in range(1, len(FILES)):
             # Read files
             df = pd.read_csv(FILES[f], delim_whitespace=True)
+            df.replace(to_replace=np.nan, value=0, inplace=True)
             df_cme = df_cme.merge(df, on=[df.columns[0], df.columns[1]])
             df_cme.drop(columns=['label_x'], inplace=True)
             df_cme.rename(columns={'label_y': 'label'}, inplace=True)
@@ -223,6 +319,7 @@ if __name__ == '__main__':
             df = df_cme.copy()
         else:       
             df = pd.read_csv(f, delim_whitespace=True)
+            df.replace(to_replace=np.nan, value=0, inplace=True)
             if args.name == '':
                 save_name = f.split('.')[0].split('/')[-1]
             else:
@@ -231,34 +328,33 @@ if __name__ == '__main__':
         # Define data and labels
         pairs = np.array(df[df.columns[0:2]])
         X = np.array(df[df.columns[2:-1]])
-        '''
-        X = np.array(df[['FD_A_elbow', 'FD_B_elbow', 'FD_A_knee', 'FD_B_knee', 'Above_Global_Mean', 'Above_Global_Median']])
-        X = np.array(df[['FD_A_elbow_y', 'FD_B_elbow_y', 'FD_A_knee_y', 'FD_B_knee_y', 'Above_Global_Mean_y', 'Above_Global_Median_y']])
-        '''
         y = np.array(df[df.columns[-1]])
         
         
         # Define data partiioning
         kf = StratifiedKFold(n_splits=K_FOLDS)
+
+        if args.cme:
+            clf = SVC(C=0.6,
+                      kernel='sigmoid',
+                      gamma='scale',
+                      probability=True,
+                      random_state=13052021,
+                      )
+        else:
+            clf = LGBMClassifier(random_state=13052021,
+                             boosting_type='goss', 
+                             learning_rate=0.1, 
+                             num_leaves=50,
+                             max_depth=10, 
+                             min_data_in_leaf=50,
+                             n_estimators=150,
+                             path_smooth=0.1,
+                             ) 
         
-        # Define classifier model and pipeline
-        #clf = RandomForestClassifier(random_state=13052021)
-        clf = xgb.XGBClassifier(random_state=13052021, 
-                                use_label_encoder=False, 
-                                eval_metric='mlogloss')
-        #pipe = Pipeline([('scaler', StandardScaler()), ('rndforest', clf)])
-        pipe = Pipeline([('scaler', StandardScaler()), ('boost', clf)])
-        
+        pipe = Pipeline([('scaler', StandardScaler()), ('metaclf', clf)])
+            
         # Metrics for evaluation
-        avg_accuracy = []
-        avg_precision = []
-        avg_recall = []
-        avg_specificity = []
-        avg_f1 = []
-        avg_mcc = []
-        avg_roc_auc = []
-        avg_pr_auc = []
-        
         # For ROC curve
         tprs = {}
         roc_aucs = {}
@@ -267,15 +363,25 @@ if __name__ == '__main__':
         precisions = {}
         pr_aucs = {}
         recalls = {}
+    
+        # Additional metrics from each k-fold subset
+        fold_accuracy = []
+        fold_precision = []
+        fold_recall = []
+        fold_specificity = []
+        fold_f1 = []
+        fold_mcc = []
         
         # Perform k-fold predictions and evaluation
         k = 0
         prob_predictions = pd.DataFrame()
         bin_predictions = pd.DataFrame()
+        output = args.name
         t_start = time.time()
         for train, test in kf.split(X, y):
             
             print('===== Fold-%s ====='%k)
+            output += '===== Fold-%s ====='%k
             
             # Fit model with training data
             pipe.fit(X[train], y[train])
@@ -295,44 +401,82 @@ if __name__ == '__main__':
             
             # Get performance metricss of binary evaluation (threshold=0.5)
             tn, fp, fn, tp = metrics.confusion_matrix(y[test], pred).ravel()
-            print('tp='+str(tp), 'fp='+str(fp), 'tn='+str(tn), 'fn='+str(fn))
+            print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
+            output += '\nTP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn)
             
-            accuracy = (tp + tn) / (tn + fp + fn + tp)
-            prec = tp / (tp + fp + 1e-06)
-            rec = tp / (tp + fn + 1e-06)
-            spec = tn / (tn + fp + 1e-06)
-            f1 = 2. * (prec * rec) / (prec + rec + 1e-06)
-            mcc = (tp * tn - fp * fn) / (((tp + fp + 1e-06) * (tp + fn + 1e-06) * (fp + tn + 1e-06) * (tn + fn + 1e-06)) ** 0.5)
+            # For imbalanced classification metrics
+            if args.delta != 0.5:
+                accuracy, precision, recall, specificity, f1, mcc = recalculate_metrics_to_imbalance(tp, tn, fp, fn, args.delta)
+                if np.isnan(accuracy) == False:
+                    fold_accuracy.append(accuracy)
+                if np.isnan(precision) == False:
+                    fold_precision.append(precision)
+                if np.isnan(recall) == False:
+                    fold_recall.append(recall)
+                if np.isnan(specificity) == False:
+                    fold_specificity.append(specificity)
+                if np.isnan(f1) == False:
+                    fold_f1.append(f1)
+                if np.isnan(mcc) == False:
+                    fold_mcc.append(mcc)
+            else:
+                try:
+                    accuracy = round((tp+tn)/(tp+fp+tn+fn), 5)
+                    fold_accuracy.append(accuracy)
+                except ZeroDivisionError:
+                    accuracy = np.nan
+                try:
+                    precision = round(tp/(tp+fp), 5)
+                    fold_precision.append(precision)
+                except ZeroDivisionError:
+                    precision = np.nan
+                try:
+                    recall = round(tp/(tp+fn), 5)
+                    fold_recall.append(recall)
+                except ZeroDivisionError:
+                    recall = np.nan
+                try:
+                    specificity = round(tn/(tn+fp), 5)
+                    fold_specificity.append(specificity)
+                except ZeroDivisionError:
+                    specificity = np.nan
+                try:
+                    f1 = round((2*tp)/(2*tp+fp+fn), 5)
+                    fold_f1.append(f1)
+                except ZeroDivisionError:
+                    f1 = np.nan
+                try:
+                    mcc = round( ( ((tp*tn) - (fp*fn)) / np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)) ), 5)
+                    fold_mcc.append(mcc)
+                except ZeroDivisionError:
+                    mcc = np.nan
             
+            print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
+            output += '\nAccuracy = ' + str(accuracy) + '\nPrecision = ' + str(precision) + '\nRecall = '+ str(recall) + '\nSpecificity = ' + str(specificity) + '\nF1 = ' + str(f1) + '\nMCC = ' + str(mcc)
+        
             auc_roc = metrics.roc_auc_score(y[test], pred_probs[:, 1])
             auc_pr = metrics.average_precision_score(y[test], pred_probs[:, 1])
             fpr, tpr, __ = metrics.roc_curve(y[test], pred_probs[:, 1])
             
-            print('acc=' + str(round(accuracy, 4)), 'prec=' + str(round(prec, 4)), 'recall=' + str(round(rec, 4)), \
-                  'spec=' + str(round(spec, 4)), 'f1=' + str(round(f1, 4)), 'mcc=' + str(round(mcc, 4)))
-            
-            avg_accuracy.append(accuracy)
-            avg_precision.append(prec)
-            avg_recall.append(rec)
-            avg_specificity.append(spec)
-            avg_f1.append(f1)
-            avg_mcc.append(mcc)
-            avg_roc_auc.append(auc_roc)
-            avg_pr_auc.append(auc_pr)
-            
+            print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
+            output += '\nAccuracy = ' + str(accuracy) + '\nPrecision = ' + str(precision) + '\nRecall = '+ str(recall) + '\nSpecificity = ' + str(specificity) + '\nF1 = ' + str(f1) + '\nMCC = ' + str(mcc)
             
             # Get performance metricss for curve plotting
             # Evaluate k-fold performance and adjust for hypothetical imbalance
             precision, recall, thresholds = metrics.precision_recall_curve(y[test], pred_probs[:, 1])
-            truth_score = pd.DataFrame(data={'Truth':y[test], 'Score':pred_probs[:, 1]})
-            precision = recalculate_precision(truth_score, precision, thresholds, ratio=IMBALANCE)
-            fpr, tpr, __ = metrics.roc_curve(y[test], pred_probs[:, 1])
-            if IMBALANCE == 0.5:
-                pr_auc = metrics.average_precision_score(y[test], pred_probs[:, 1])
+            df_pred = pd.DataFrame(data={1:y[test], 0:pred_probs[:, 1]})
+            if args.delta != 0.5:
+                precision = recalculate_precision(df_pred, precision, thresholds, args.delta)
+            fpr, tpr, __ = metrics.roc_curve(df_pred[1], df_pred[0])
+            if args.delta == 0.5:
+                pr_auc = metrics.average_precision_score(df_pred[1], df_pred[0])
             else:
                 pr_auc = metrics.auc(recall, precision)
-            roc_auc = metrics.roc_auc_score(y[test], pred_probs[:, 1])
-            print('auc_roc=%.6f'%(roc_auc) + '\nauc_pr=%.6f'%(pr_auc))
+            roc_auc = metrics.roc_auc_score(df_pred[1], df_pred[0])
+
+            print('AUC_ROC = %0.5f'%roc_auc, '\nAUC_PR = %0.5f'%pr_auc)
+            output += '\nAUC_ROC = %0.5f'%roc_auc + '\nAUC_PR = %0.5f\n'%pr_auc
+            
             # Add k-fold performance for overall average performance
             tprs[k] = tpr
             fprs[k] = fpr
@@ -344,6 +488,7 @@ if __name__ == '__main__':
             k += 1
         
         duration = time.time() - t_start
+        print(duration)
         
         # Compile all predictions from k test folds
         prob_predictions = df.merge(prob_predictions, on=[df.columns[0], df.columns[1]])
@@ -357,58 +502,107 @@ if __name__ == '__main__':
         pred_filename = result_filename = args.results + 'predictions_' + save_name + '.tsv'
         prob_predictions.to_csv(pred_filename, sep='\t', header=None, index=False)
         
-        results ='accuracy=%.4f (+/- %.4f)'%(np.mean(avg_accuracy), np.std(avg_accuracy)) \
-                      + '\nprecision=%.4f (+/- %.4f)'%(np.mean(avg_precision), np.std(avg_precision)) \
-                      + '\nrecall=%.4f (+/- %.4f)'%(np.mean(avg_recall), np.std(avg_recall)) \
-                      + '\nspecificity=%.4f (+/- %.4f)'%(np.mean(avg_specificity), np.std(avg_specificity)) \
-                      + '\nf1=%.4f (+/- %.4f)'%(np.mean(avg_f1), np.std(avg_f1)) \
-                      + '\nmcc=%.4f (+/- %.4f)'%(np.mean(avg_mcc), np.std(avg_mcc)) \
-                      + '\nroc_auc=%.4f (+/- %.4f)' % (np.mean(avg_roc_auc), np.std(avg_roc_auc)) \
-                      + '\npr_auc=%.4f (+/- %.4f)' % (np.mean(avg_pr_auc), np.std(avg_pr_auc)) \
-                      + '\ntime(sec.)=%.2f'%(duration) \
-                      + '\n'
-        print('----- Results -----\n' + results)
+        evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(fold_accuracy), np.std(fold_accuracy))
+                      + '\nprecision = %.5f (+/- %.5f)'%(np.mean(fold_precision), np.std(fold_precision)) 
+                      + '\nrecall = %.5f (+/- %.5f)'%(np.mean(fold_recall), np.std(fold_recall)) 
+                      + '\nspecificity = %.5f (+/- %.5f)'%(np.mean(fold_specificity), np.std(fold_specificity)) 
+                      + '\nf1 = %.5f (+/- %.5f)'%(np.mean(fold_f1), np.std(fold_f1)) 
+                      + '\nmcc = %.5f (+/- %.5f)'%(np.mean(fold_mcc), np.std(fold_mcc))
+                      + '\nroc_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(roc_aucs.values(), dtype=float)), np.std(np.fromiter(roc_aucs.values(), dtype=float)))
+                      + '\npr_auc = %.5f (+/- %.5f)' % (np.mean(np.fromiter(pr_aucs.values(), dtype=float)), np.std(np.fromiter(pr_aucs.values(), dtype=float)))
+                      + '\nroc_auc_overall = %.5f' % (roc_auc)
+                      + '\npr_auc_overall = %.5f' % (pr_auc)
+                      + '\n')
+        print('----- Results -----\n' + evaluation)
+        output += evaluation
         # Write results to file
         result_filename = args.results + 'results_' + save_name + '.txt'
         with open(result_filename, 'w') as fp:
-            fp.write(results)
+            fp.write(output)
         
-        truth_score = pd.DataFrame(data={'Truth':y, 'Score':prob_predictions[prob_predictions.columns[-1]]})
+        df_pred_total = pd.DataFrame(data={1:y, 0:prob_predictions[prob_predictions.columns[-1]]})
         
-        # Get overall performance across all folds
-        precision, recall, thresholds = metrics.precision_recall_curve(truth_score['Truth'], truth_score['Score'])
-        precision = recalculate_precision(truth_score, precision, thresholds, ratio=IMBALANCE)
-        fpr, tpr, __ = metrics.roc_curve(truth_score['Truth'], truth_score['Score'])
-        if IMBALANCE == 0.5:
-            pr_auc = metrics.average_precision_score(truth_score['Truth'], truth_score['Score'])
+        # Get total performance from all PPI predictions (concatenated k-fold tested subsets)
+        precision, recall, thresholds = metrics.precision_recall_curve(df_pred_total[1], df_pred_total[0])
+        if args.delta != 0.5:
+            precision = recalculate_precision(df_pred_total, precision, thresholds, args.delta)
+        fpr, tpr, __ = metrics.roc_curve(df_pred_total[1], df_pred_total[0])
+        if args.delta == 0.5:
+            pr_auc = metrics.average_precision_score(df_pred_total[1], df_pred_total[0])
         else:
             pr_auc = metrics.auc(recall, precision)
-        roc_auc = metrics.roc_auc_score(truth_score['Truth'], truth_score['Score'])
+        roc_auc = metrics.roc_auc_score(df_pred_total[1], df_pred_total[0])
+        
+        if args.delta <= 0.5:
+            leg_loc = 'lower right'
+        else:
+            leg_loc = 'upper right'
+        
+       # Interpolate k-fold curves for overall std plotting
+        interp_precisions = {}
+        #pr_auc_interp = {}
+        for i in recalls.keys():
+            interp_precision = np.interp(recall, recalls[i], precisions[i], period=precision.shape[0]/precisions[i].shape[0])
+            interp_precisions[i] = interp_precision
+            #pr_auc_interp[i] = pr_aucs[i]
+        df_interp_precisions = pd.DataFrame(data=interp_precisions)
+        df_interp_precisions.insert(df_interp_precisions.shape[1], 'mean', df_interp_precisions.mean(axis=1))
+        df_interp_precisions.insert(df_interp_precisions.shape[1], 'std', df_interp_precisions.std(axis=1))
         
         # Plot and save curves
+        print("Plotting precision-recall")
+        # Precision-Recall
         plt.figure
-        plt.plot(recall, precision, color='black', label='AUC = %0.4f +/- %0.4f' % (pr_auc, np.std(np.fromiter(avg_pr_auc, dtype=float))))
-        for i in range(0, K_FOLDS):
+        print("\t...average curve...")
+        plt.plot(recall, precision, color='black', label='AUC = %0.4f +/- %0.4f' % (pr_auc, np.std(np.fromiter(pr_aucs.values(), dtype=float))))
+        '''
+        for i in recalls.keys():
+            print("\t...fold-%s curve..."%i)
             plt.plot(recalls[i], precisions[i], alpha=0.25)
+        '''
+        plt.fill_between(recall, precision - df_interp_precisions['std'], precision + df_interp_precisions['std'], facecolor='blue', alpha=0.25)
+        plt.fill_between(recall, precision - 2*df_interp_precisions['std'], precision + 2*df_interp_precisions['std'], facecolor='blue', alpha=0.25)
+        #plt.plot(recall, df_interp_precisions['mean'], color='orange', label='AUC_folds = %0.4f +/- %0.4f' % (np.mean(np.fromiter(pr_auc_interp.values(), dtype=float)), np.std(np.fromiter(pr_auc_interp.values(), dtype=float))))
         plt.xlabel('Recall')
         plt.ylabel('Precision') 
         plt.xlim([-0.05, 1.05])
         plt.ylim([-0.05, 1.05])
-        plt.title("Precision-Recall Curve - %s %s"%(save_name, RATIO))
-        plt.legend(loc='best', handlelength=0)
-        plt.savefig(args.results + 'performance_' + save_name + '_PR.png', format='png')
+        plt.title("Precision-Recall Curve - %s %s"%(args.name, RATIO))
+        plt.legend(loc=leg_loc, handlelength=0)
+        plt.savefig(args.results + args.name + '_PR.png', format='png')
         plt.close()
         
+        # Interpolate k-fold curves for overall std plotting
+        interp_tprs = {}
+        #roc_auc_interp = {}
+        for i in fprs.keys():
+            interp_tpr = np.interp(fpr, fprs[i], tprs[i], period=tpr.shape[0]/tprs[i].shape[0])
+            interp_tprs[i] = interp_tpr
+            #roc_auc_interp[i] = roc_aucs[i]
+        df_interp_tprs = pd.DataFrame(data=interp_tprs)
+        df_interp_tprs.insert(df_interp_tprs.shape[1], 'mean', df_interp_tprs.mean(axis=1))
+        df_interp_tprs.insert(df_interp_tprs.shape[1], 'std', df_interp_tprs.std(axis=1))
+        
+        # ROC
+        print("Plotting ROC")
         plt.figure
-        plt.plot(fpr, tpr, color='black', label='AUC = %0.4f +/- %0.4f' % (roc_auc, np.std(np.fromiter(avg_roc_auc, dtype=float))))
-        for i in range(0, K_FOLDS):
+        print("\t...average curve...")
+        plt.plot(fpr, tpr, color='black', label='AUC = %0.4f +/- %0.4f' % (roc_auc, np.std(np.fromiter(roc_aucs.values(), dtype=float))))
+        '''
+        for i in fprs.keys():
+            print("\t...fold-%s curve..."%i)
             plt.plot(fprs[i], tprs[i], alpha=0.25)
+        '''
+        plt.fill_between(fpr, tpr - df_interp_tprs['std'], tpr + df_interp_tprs['std'], facecolor='blue', alpha=0.25)
+        plt.fill_between(fpr, tpr - 2*df_interp_tprs['std'], tpr + 2*df_interp_tprs['std'], facecolor='blue', alpha=0.25)
+        #plt.plot(fpr, df_interp_tprs['mean'], color='orange', label='AUC_folds = %0.4f +/- %0.4f' % (np.mean(np.fromiter(roc_auc_interp.values(), dtype=float)), np.std(np.fromiter(roc_auc_interp.values(), dtype=float))))
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
         plt.xlim([-0.05, 1.05])
         plt.ylim([-0.05, 1.05])
-        plt.title("ROC Curve - %s %s"%(save_name, RATIO))
-        plt.legend(loc='lower right', handlelength=0)
-        plt.savefig(args.results + 'performance_' + save_name + '_ROC.png', format='png')
+        plt.title("ROC Curve - %s %s"%(args.name, RATIO))
+        plt.legend(loc=leg_loc, handlelength=0)
+        plt.savefig(args.results + args.name + '_ROC.png', format='png')
         plt.close()
+
         
