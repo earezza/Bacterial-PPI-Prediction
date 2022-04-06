@@ -1,4 +1,4 @@
-## Protein-Protein Interaction Prediction using BioGRID PPI Data  
+## Bacterial Protein-Protein Interaction Prediction  
 
 Provides implementation for:  
 - constructing high-quality PPI datasets  
