@@ -597,6 +597,9 @@ def get_protein_locations(proteins):
 
 # ======================= FUNCTIONS FOR STEP 4 =======================
 def save_ppi_data(save_location, filename, df_pos, df_neg, df_fasta, models=[], kfolds=0, all_to_all=False, park_marcotte=0):
+    if not os.path.exists(save_location):
+        os.mkdir(save_location)
+    
     pos = df_pos.copy()
     neg = df_neg.copy()
     fasta = df_fasta.copy()
