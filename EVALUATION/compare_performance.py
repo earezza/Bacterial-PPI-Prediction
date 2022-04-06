@@ -9,8 +9,9 @@ Description:
     Requires files in PPI results to have no header and be whitespace-separated (.tsv).
     
 Usage:
+    eg.
     python compare_performance.py -s SCORES_1/ SCORES_2/ SCORES_3/ -l labels_1.tsv labels_2.tsv labels_3.tsv -d 0.5 -r RESULTS/
-    python compare_performance.py -s SCORES_1.tsv SCORES_2.tsv SCORES_3.tsv -l labels.tsv -d 0.5 -r RESULTS/
+    python compare_performance.py -s SCORES_1.tsv SCORES_2.tsv SCORES_3.tsv -l labels.tsv -d 0.5 -r RESULTS/ -m auc_pr -t paired
     
     Input arguements:
         -s list of <str> Can be either:
@@ -24,9 +25,10 @@ Usage:
             e.g.
             - balanced data would be 0.5 (number of positives == number of negatives)
             - imbalanced data where 1 positive for every 100 negatives would be 1/101, so 0.0099
-        -r <str> is a directory path for saving the results, default is current directory
+        -r <str> is a directory path for saving the results, default is current directory + 'COMPARISONS/'
         -n <str> name for saving files, default is result directory name
-        -m <str> metric used in significance tests to compare performance
+        -m <str> metric used in significance tests to compare performance, default is area under precision-recall curve
+        -t <str> type of two-tailed t-test performed (paired or independent), default is independent
 
 @author: Eric Arezza
 """
@@ -196,7 +198,7 @@ def get_metrics(scores, labels, delta):
         df_pred_total = df_pred_total.append(df_pred)
         
         # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1 and 'SPRINT' not in scores:
+        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1:# and 'SPRINT' not in scores:
             
             tn, fp, fn, tp = metrics.confusion_matrix(df_pred[1], (df_pred[0] + 1e-12).round()).ravel()
             print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
@@ -249,6 +251,7 @@ def get_metrics(scores, labels, delta):
                     mcc = np.nan
             
             print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
+        np.seterr(invalid='ignore')
         # Evaluate k-fold performance and adjust for hypothetical imbalance
         precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
         if delta != 0.5:
@@ -283,7 +286,7 @@ def get_metrics(scores, labels, delta):
         pr_auc = metrics.auc(recall, precision)
     roc_auc = metrics.roc_auc_score(df_pred_total[1], df_pred_total[0])
     
-    if df_pred_total[0].min() >= 0 and df_pred_total[0].max() <= 1 and 'SPRINT' not in scores:
+    if df_pred_total[0].min() >= 0 and df_pred_total[0].max() <= 1:# and 'SPRINT' not in scores:
         evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(fold_accuracy), np.std(fold_accuracy))
                       + '\nprecision = %.5f (+/- %.5f)'%(np.mean(fold_precision), np.std(fold_precision)) 
                       + '\nrecall = %.5f (+/- %.5f)'%(np.mean(fold_recall), np.std(fold_recall)) 

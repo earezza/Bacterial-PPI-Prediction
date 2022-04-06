@@ -178,7 +178,7 @@ if __name__ == '__main__':
         df_pred_total = df_pred_total.append(df_pred)
         
         # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1 and 'SPRINT' not in args.scores:
+        if df_pred[0].min() >= 0 and df_pred[0].max() <= 1: #and 'SPRINT' not in args.scores:
             
             tn, fp, fn, tp = metrics.confusion_matrix(df_pred[1], (df_pred[0] + 1e-12).round()).ravel()
             print('TP = %0.0f \nFP = %0.0f \nTN = %0.0f \nFN = %0.0f'%(tp, fp, tn, fn))
@@ -235,6 +235,7 @@ if __name__ == '__main__':
             
             print('Accuracy =', accuracy, '\nPrecision =', precision, '\nRecall =', recall, '\nSpecificity =', specificity, '\nF1 =', f1, '\nMCC =', mcc)
             output += '\nAccuracy = ' + str(accuracy) + '\nPrecision = ' + str(precision) + '\nRecall = '+ str(recall) + '\nSpecificity = ' + str(specificity) + '\nF1 = ' + str(f1) + '\nMCC = ' + str(mcc)
+        np.seterr(invalid='ignore')
         # Evaluate k-fold performance and adjust for hypothetical imbalance
         precision, recall, thresholds = metrics.precision_recall_curve(df_pred[1], df_pred[0])
         if args.delta != 0.5:
@@ -276,7 +277,7 @@ if __name__ == '__main__':
         leg_loc = 'upper right'
     
     # Get other metrics at 0.5 threshold if predictions are probabilities (0 to 1) i.e. not SPRINT predictions
-    if df_pred_total[0].min() >= 0 and df_pred_total[0].max() <= 1 and 'SPRINT' not in args.scores:
+    if df_pred_total[0].min() >= 0 and df_pred_total[0].max() <= 1:# and 'SPRINT' not in args.scores:
         evaluation = ('accuracy = %.5f (+/- %.5f)'%(np.mean(fold_accuracy), np.std(fold_accuracy))
                       + '\nprecision = %.5f (+/- %.5f)'%(np.mean(fold_precision), np.std(fold_precision)) 
                       + '\nrecall = %.5f (+/- %.5f)'%(np.mean(fold_recall), np.std(fold_recall)) 
