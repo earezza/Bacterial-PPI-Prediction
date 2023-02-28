@@ -98,7 +98,7 @@ class OneToAll(object):
                         break
             except:
                 # If still no knee found, manually assign knee to last rank PPI
-                if self.knee == None:
+                if self.knee.knee == None:
                     self.knee = No_Knee(self.scores)
             try:
                 # Adjust sensitivity until elbow found to avoid None value
@@ -109,11 +109,11 @@ class OneToAll(object):
                         break
             except:
                 # If still no elbow found, manually assign elbow to first rank PPI
-                if self.elbow == None:
+                if self.elbow.knee == None:
                     self.elbow = No_Elbow(self.scores)
-        if self.knee == None:
+        if self.knee.knee == None:
             self.knee = No_Knee(self.scores)
-        if self.elbow == None:
+        if self.elbow.knee == None:
             self.elbow = No_Elbow(self.scores)
         # Swap if poor elbow/knee detections
         if self.knee.knee < self.elbow.knee:
