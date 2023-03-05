@@ -470,6 +470,7 @@ def map_hpidb_to_uniprot(df_hpidb, include_unreviewed=False):
             data = urllib.parse.urlencode(params)
             data = data.encode('utf-8')
             req = urllib.request.Request(url, data)
+            req.type = 'http'
             with urllib.request.urlopen(req) as webresults:
                response = webresults.read().decode('utf-8')
         except:
