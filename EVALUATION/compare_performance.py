@@ -399,12 +399,32 @@ if __name__ == '__main__':
     log = open("%s%s.log"%(args.results, args.name), "a")
     sys.stdout = log
     t_start = time.time()
-    scores_labels_mapping = {}
-    for i in range(0, len(args.scores)):
-        if len(args.labels) == 1:
-            scores_labels_mapping[args.scores[i]] = args.labels[0]
-        else:
-            scores_labels_mapping[args.scores[i]] = args.labels[i]
+    
+    if os.path.isdir(args.scores[0]):
+        # For cross-validation tested PPI subsets
+        files = os.listdir(path=args.scores)
+        files = [ x for x in files if 'prediction' in x and '.pos' not in x and '.neg' not in x ]
+        files.sort()
+        scores_labels_mapping = {}
+        for f in range(0, len(files)):
+            if len(args.labels) == 1:
+                scores_labels_mapping[args.scores+files[f]] = args.labels[0]
+            else:
+                scores_labels_mapping[args.scores+files[f]] = args.labels[f]
+    else:
+       scores_labels_mapping = {}
+       for i in range(0, len(args.scores)):
+           if len(args.labels) == 1:
+               scores_labels_mapping[args.scores[i]] = args.labels[0]
+           else:
+               scores_labels_mapping[args.scores[i]] = args.labels[i]
+                
+    #scores_labels_mapping = {}
+    #for i in range(0, len(args.scores)):
+    #    if len(args.labels) == 1:
+    #        scores_labels_mapping[args.scores[i]] = args.labels[0]
+    #    else:
+    #        scores_labels_mapping[args.scores[i]] = args.labels[i]
     
     performances = {}
     overall_curves = {}
@@ -415,7 +435,8 @@ if __name__ == '__main__':
     names = []
     for s, l in scores_labels_mapping.items():
         performance, overall_curve, interp_precision, interp_tpr, pr_auc, roc_auc = get_metrics(s, l, args.delta)
-        name = ''.join([ i.replace('/', '') for i in s.split('RESULTS')[1:] ])
+        #name = ''.join([ i.replace('/', '') for i in s.split('RESULTS')[1:] ])
+        name = s.split('/')[-2]
         names.append(name)
         performances[name] = performance
         overall_curves[name] = overall_curve
