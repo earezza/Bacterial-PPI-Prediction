@@ -77,8 +77,10 @@ args = parser.parse_args()
 RESULTS_DIR = args.results
 if not os.path.exists(RESULTS_DIR):
     os.mkdir(RESULTS_DIR)
-if args.name == '':
-    args.name = RESULTS_DIR.split('/')[-2].lower().capitalize() + '_' + args.labels.split('/')[-1].split('.')[0]
+if args.name == '' and len(args.labels) == 1:
+    args.name = RESULTS_DIR.split('/')[-2].lower().capitalize() + '_' + args.labels[0].split('/')[-1].split('.')[0]
+elif args.name == '' and len(args.labels) > 1:
+    args.name = RESULTS_DIR.split('/')[-2].lower().capitalize()
 
 # Calculate estimate for prevalence-corrected precision on imbalanced data
 def recalculate_precision(df, precision, thresholds, d):
