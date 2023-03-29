@@ -6,4 +6,11 @@ Provides implementation for:
 - evaluating PPI prediction results
   
 ![alt text](RP-CME_flowchart.png)  
-contact: ericarezza@cmail.carleton.ca  
+
+___  
+
+#### More detailed information about the use-case for this repository can be found in my M.A.Sc. thesis:  
+#### "Assessing and Improving Protein-Protein Interaction Prediction in E. coli" https://doi.org/10.22215/etd/2022-15110  
+
+Contact: ericarezza@cmail.carleton.ca  
+
